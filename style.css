@@ -1,87 +1,339 @@
-/* ====== Base Styles ====== */
+/* ====== Global Font Settings ====== */
+.large-title {
+    font-size: 1.5rem; /* You can adjust the size */
+    font-weight: 200;
+}
+.large-font {
+    font-size: 1.5rem; /* You can adjust the size */
+    font-weight: 200;
+}
 body {
+    font-size: 20px;
     font-family: 'Inter', sans-serif;
+    color: #212529;
+    background-color: #f8f9fa;
 }
 
-/* ====== Navbar ====== */
-.navbar-brand {
-    font-weight: bold;
-    font-size: 1.5rem;
+h1, h2, h3, h4, h5, h6 {
+    font-size: 20;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
 }
 
-/* ====== Hero Section ====== */
-.hero h1 {
-    font-size: 2.2rem;
+label,
+button,
+input,
+textarea,
+select,
+.form-control {
+    font-size: 1rem;
 }
 
-/* ====== Table Styles ====== */
-
-/* Header - Media Track Green */
-.table-header-green th {
-    background-color: #198754 !important;
-    color: white;
-    text-align: left;
+/* ====== Layout Container ====== */
+.container {
+    max-width: 1500px; /* ⬆️ Increased for wider tables */
+    margin: 0 auto;
+    padding: 10px 5px;
 }
 
-/* Alternating row background */
-.custom-table tbody tr:nth-child(odd) td {
-    background-color: #f3fcf7;
-}
-
-.custom-table tbody tr:nth-child(even) td {
-    background-color: #e9f9ef;
-}
-
-/* Cell spacing */
-.custom-table td,
-.custom-table th {
-    vertical-align: middle;
-    padding: 12px;
-}
-
-/* ====== Button Styles ====== */
-
-/* Edit Button - Media Green */
-.btn-edit {
-    background-color: #198754;
-    color: white;
+/* ====== Card Layout ====== */
+.card {
     border: none;
+    border-radius: 12px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
 }
 
-.btn-edit:hover {
-    background-color: #157347;
+.card h4 {
+    font-weight: 600;
 }
 
-/* Delete Button - Soft Red */
-.btn-delete {
-    background-color: #bb2d3b;
-    color: white;
-    border: none;
-}
-
-.btn-delete:hover {
-    background-color: #a52833;
-}
-
-/* ====== Modal Improvements (Optional) ====== */
-.modal-content {
-    border-radius: 10px;
-}
-
-.modal-header,
-.modal-footer {
-    border: none;
-}
-
-/* ====== Toast Overrides (Optional) ====== */
-.toast {
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+/* ====== Form Fields ====== */
+form .form-label {
     font-weight: 500;
 }
 
-img.preview-thumb {
-    max-height: 50px;
+form .form-control {
+    height: 45px;
+    border-radius: 8px;
+}
+
+form textarea.form-control {
+    height: auto;
+    min-height: 100px;
+}
+
+form button.btn {
+    border-radius: 8px;
+    font-weight: 600;
+}
+
+/* ====== Select2 Styling ====== */
+.select2-container {
+    width: 100% !important;
+    font-size: 1rem;
+}
+
+.select2-container .select2-selection {
+    height: 45px !important;
+    border: 1px solid #ced4da !important;
+    border-radius: 8px !important;
+    background-color: #fff;
+    transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+.select2-container .select2-selection__rendered {
+    line-height: 43px !important;
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+    color: #212529;
+    font-size: 1rem;
+}
+
+.select2-container .select2-selection__placeholder {
+    color: #6c757d;
+    font-size: 1rem;
+}
+
+.select2-container--default .select2-selection--single .select2-selection__arrow {
+    height: 43px !important;
+    right: 12px !important;
+}
+
+.select2-container--default .select2-selection--single .select2-selection__arrow b {
+    border-color: #6c757d transparent transparent transparent;
+    border-width: 5px 4px 0 4px;
+}
+
+/* Select2 Focus State */
+.select2-container--default.select2-container--focus .select2-selection {
+    border-color: #86b7fe !important;
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25) !important;
+}
+
+/* Select2 Validation States */
+.select2-container.is-invalid .select2-selection {
+    border-color: #dc3545 !important;
+    box-shadow: 0 0 0 0.25rem rgba(220, 53, 69, 0.25) !important;
+}
+
+.select2-container.is-valid .select2-selection {
+    border-color: #198754 !important;
+    box-shadow: 0 0 0 0.25rem rgba(25, 135, 84, 0.25) !important;
+}
+
+/* Select2 Dropdown */
+.select2-dropdown {
+    border: 1px solid #ced4da;
+    border-radius: 8px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    z-index: 9999;
+}
+
+.select2-container--default .select2-results__option {
+    padding: 8px 12px;
+    font-size: 1rem;
+    color: #212529;
+}
+
+.select2-container--default .select2-results__option--highlighted[aria-selected] {
+    background-color: #198754;
+    color: #fff;
+}
+
+.select2-container--default .select2-results__option[aria-selected="true"] {
+    background-color: #e9ecef;
+    color: #212529;
+}
+
+/* Select2 Search */
+.select2-search--dropdown .select2-search__field {
+    border: 1px solid #ced4da;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 1rem;
+    margin: 8px;
+    width: calc(100% - 16px);
+}
+
+.select2-search--dropdown .select2-search__field:focus {
+    border-color: #86b7fe;
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+    outline: none;
+}
+
+/* Select2 Tags (for new entries) */
+.select2-container--default .select2-selection--multiple .select2-selection__choice {
+    background-color: #198754;
+    border-color: #198754;
+    color: #fff;
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 0.9rem;
+    margin: 2px;
+}
+
+.select2-container--default .select2-selection--multiple .select2-selection__choice__remove {
+    color: #fff;
+    margin-right: 6px;
+    font-weight: bold;
+}
+
+.select2-container--default .select2-selection--multiple .select2-selection__choice__remove:hover {
+    color: #f8f9fa;
+}
+
+/* Select2 Loading */
+.select2-container--default .select2-results__option--loading {
+    color: #6c757d;
+    font-style: italic;
+}
+
+/* Select2 No Results */
+.select2-container--default .select2-results__option--no-results {
+    color: #6c757d;
+    font-style: italic;
+}
+
+/* ====== Table Styling ====== */
+
+.table-container {
+    margin-top: 40px;
+    background: white;
+    padding: 20px;
+    border-radius: 12px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.05);
+    overflow-x: hidden; /* Prevents scroll */
+}
+
+.table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 0.95rem;
+    table-layout: auto; /* Ensures content wraps */
+    word-wrap: break-word;
+}
+
+.table th,
+.table td {
+    padding: 12px 16px;
+    vertical-align: middle;
+    text-align: left;
+}
+
+.table th {
+    background-color: #198754;
+    color: #fff;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+/* Optional: Zebra stripes */
+.table-striped > tbody > tr:nth-of-type(odd) {
+    background-color: #f9f9f9;
+}
+
+.table-striped > tbody > tr:nth-of-type(odd) {
+    background-color: #f9f9f9;
+}
+
+/* ====== Toast Notification ====== */
+#toastMessage {
+    z-index: 9999;
+    min-width: 280px;
+    font-size: 0.95rem;
+    font-weight: 500;
+}
+
+/* ====== Modal Styling ====== */
+.modal-dialog {
+    max-width: 900px;
+}
+
+.modal-header {
+    padding: 1rem 2rem;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.modal-body {
+    padding: 2rem;
+}
+
+.modal-footer {
+    padding: 1rem 2rem;
+}
+
+.modal-title {
+    font-weight: 600;
+}
+
+/* Select2 inside Modals */
+.modal .select2-container {
+    z-index: 9999;
+}
+
+.modal .select2-dropdown {
+    z-index: 10000;
+}
+
+/* ====== Buttons ====== */
+.btn-success {
+    background-color: #198754;
+    border-color: #198754;
+    color: #fff;
+}
+
+.btn-success:hover {
+    background-color: #157347;
+    border-color: #146c43;
+}
+
+.btn-outline-danger {
+    font-weight: 500;
+}
+
+/* ====== Custom Color ====== */
+.bg-mediagreen {
+    background-color: #198754 !important;
+    color: white !important;
+    font-size: 1.25rem; /* Adjust the size as needed */
+}
+
+/* ====== File Thumbnail ====== */
+.preview-thumb {
+    height: 40px;
+    width: auto;
     border-radius: 4px;
-    object-fit: cover;
-    box-shadow: 0 0 3px rgba(0, 0, 0, 0.1);
+    object-fit: contain;
+}
+
+/* ====== Pagination ====== */
+.pagination .page-item.active .page-link {
+    background-color: #198754;
+    border-color: #198754;
+}
+
+.pagination .page-link {
+    color: #198754;
+    font-weight: 500;
+}
+
+.pagination .page-link:hover {
+    background-color: #d4f1e1;
+    border-color: #198754;
+    color: #146c43;
+}
+
+/* ====== Responsive Design ====== */
+@media (max-width: 768px) {
+    .select2-container .select2-selection {
+        height: 42px !important;
+    }
+    
+    .select2-container .select2-selection__rendered {
+        line-height: 40px !important;
+    }
+    
+    .select2-container--default .select2-selection--single .select2-selection__arrow {
+        height: 40px !important;
+    }
 }

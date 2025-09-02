@@ -10,82 +10,92 @@ header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Methods: GET, POST, PUT, DELETE");
 header("Access-Control-Allow-Headers: Content-Type");
 
-require_once '../config.php'; // MongoDB connection
+require_once '../controllers/FeatureController.php';
 
 $method = $_SERVER['REQUEST_METHOD'];
 
-// Get ID from query string (e.g. ?id=...)
+// Get ID from query string
 $id = isset($_GET['id']) && preg_match('/^[a-f\d]{24}$/i', $_GET['id']) ? $_GET['id'] : null;
 
-// Read JSON body
+// Read JSON body for non-form requests
 function getInputData() {
-    return json_decode(file_get_contents("php://input"), true);
+    $contentType = $_SERVER['CONTENT_TYPE'] ?? '';
+    if (strpos($contentType, 'application/json') !== false) {
+        return json_decode(file_get_contents("php://input"), true);
+    }
+    return null;
 }
 
 // Format output
 function formatFeature($f) {
-    $f['_id'] = (string) $f['_id'];
+    if (isset($f['_id'])) {
+        $f['_id'] = (string) $f['_id'];
+    }
     return $f;
 }
 
 switch ($method) {
     case 'GET':
         if ($id) {
-            try {
-                $feature = $collection->findOne(['_id' => new MongoDB\BSON\ObjectId($id)]);
-                if ($feature) {
-                    echo json_encode(formatFeature($feature));
-                } else {
-                    http_response_code(404);
-                    echo json_encode(['error' => 'Feature not found']);
-                }
-            } catch (Exception $e) {
-                http_response_code(400);
-                echo json_encode(['error' => 'Invalid MongoDB ID']);
+            // Get single feature
+            $feature = FeatureController::getFeatureById($id);
+            if ($feature) {
+                echo json_encode(formatFeature($feature->toArray()));
+            } else {
+                http_response_code(404);
+                echo json_encode(['error' => 'Feature not found']);
             }
         } else {
-            $features = $collection->find([], ['sort' => ['created_at' => -1]]);
+            // Handle search and filtering
+            $search = $_GET['search'] ?? '';
+            $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 0;
+            $skip = isset($_GET['skip']) ? (int)$_GET['skip'] : 0;
+            
+            if (!empty($search)) {
+                $features = FeatureController::searchFeatures($search, $limit, $skip);
+            } else {
+                $features = FeatureController::getFeatures($limit, $skip);
+            }
+            
             $output = [];
             foreach ($features as $f) {
-                $output[] = formatFeature($f);
+                $output[] = formatFeature($f->toArray());
             }
             echo json_encode($output);
         }
         break;
 
     case 'POST':
+        // Handle both JSON and form data
         $data = getInputData();
-        if (!$data || !isset($data['system_name'], $data['module'], $data['description'], $data['client'])) {
-            http_response_code(400);
-            echo json_encode(['error' => 'Missing required fields']);
-            break;
+        if ($data) {
+            // JSON request
+            $postData = $data;
+            $fileData = [];
+        } else {
+            // Form request
+            $postData = $_POST;
+            $fileData = $_FILES;
         }
-
-        $insert = [
-            'system_name' => $data['system_name'],
-            'module' => $data['module'],
-            'description' => $data['description'],
-            'client' => $data['client'],
-            'sample_file' => $data['sample_file'] ?? '',
-            'created_at' => new MongoDB\BSON\UTCDateTime()
-        ];
-
-        $result = $collection->insertOne($insert);
-        echo json_encode(['message' => 'Feature created', 'id' => (string) $result->getInsertedId()]);
+        
+        $result = FeatureController::addFeature($postData, $fileData);
+        
+        if ($result['success']) {
+            http_response_code(201);
+            echo json_encode([
+                'message' => 'Feature created successfully',
+                'id' => $result['id']
+            ]);
+        } else {
+            http_response_code(400);
+            echo json_encode(['errors' => $result['errors']]);
+        }
         break;
 
     case 'PUT':
         if (!$id) {
             http_response_code(400);
             echo json_encode(['error' => 'ID is required']);
-            break;
-        }
-
-        try {
-            $objectId = new MongoDB\BSON\ObjectId($id);
-        } catch (Exception $e) {
-            http_response_code(400);
-            echo json_encode(['error' => 'Invalid MongoDB ID']);
             break;
         }
 
@@ -96,23 +106,24 @@ switch ($method) {
             break;
         }
 
-        $updateData = [
-            'system_name' => $data['system_name'] ?? '',
-            'module' => $data['module'] ?? '',
-            'description' => $data['description'] ?? '',
-            'client' => $data['client'] ?? '',
-            'sample_file' => $data['sample_file'] ?? ''
+        // Convert to controller expected format
+        $postData = [
+            'edit_id' => $id,
+            'edit_system_name' => $data['system_name'] ?? '',
+            'edit_module' => $data['module'] ?? '',
+            'edit_feature' => $data['feature'] ?? '',
+            'edit_description' => $data['description'] ?? '',
+            'edit_client' => $data['client'] ?? '',
+            'edit_source' => $data['source'] ?? ''
         ];
 
-        try {
-            $collection->updateOne(
-                ['_id' => $objectId],
-                ['$set' => $updateData]
-            );
-            echo json_encode(['message' => 'Feature updated']);
-        } catch (Exception $e) {
-            http_response_code(500);
-            echo json_encode(['error' => 'Update failed', 'details' => $e->getMessage()]);
+        $result = FeatureController::updateFeature($postData, []);
+        
+        if ($result['success']) {
+            echo json_encode(['message' => 'Feature updated successfully']);
+        } else {
+            http_response_code(400);
+            echo json_encode(['errors' => $result['errors']]);
         }
         break;
 
@@ -123,12 +134,13 @@ switch ($method) {
             break;
         }
 
-        try {
-            $collection->deleteOne(['_id' => new MongoDB\BSON\ObjectId($id)]);
-            echo json_encode(['message' => 'Feature deleted']);
-        } catch (Exception $e) {
-            http_response_code(400);
-            echo json_encode(['error' => 'Invalid ID']);
+        $result = FeatureController::deleteFeature($id);
+        
+        if ($result['success']) {
+            echo json_encode(['message' => 'Feature deleted successfully']);
+        } else {
+            http_response_code(404);
+            echo json_encode(['error' => $result['error']]);
         }
         break;
 
@@ -136,3 +148,4 @@ switch ($method) {
         http_response_code(405);
         echo json_encode(['error' => 'Method not allowed']);
 }
+?>
