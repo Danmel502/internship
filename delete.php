@@ -19,6 +19,12 @@ if (strpos($contentType, 'application/json') !== false) {
         
         try {
             $result = FeatureController::bulkDeleteFeatures($ids);
+            
+            // ADDED: Check and update module system relationships after bulk delete
+            if ($result['success']) {
+                updateModuleSystemRelationships();
+            }
+            
             header('Content-Type: application/json');
             echo json_encode($result);
         } catch (Exception $e) {
@@ -65,6 +71,10 @@ try {
     
     if ($result['success']) {
         $_SESSION['success'] = "✅ Feature deleted successfully!";
+        
+        // ADDED: Check and update module system relationships after single delete
+        updateModuleSystemRelationships();
+        
     } else {
         // Handle specific error messages from FeatureController
         $errorMessage = isset($result['error']) ? $result['error'] : 'Unknown error occurred';
@@ -75,6 +85,94 @@ try {
     // Catch any unexpected errors
     error_log("Unexpected error in delete.php: " . $e->getMessage());
     $_SESSION['error'] = "❌ An unexpected error occurred while deleting the feature.";
+}
+
+// ADDED: Function to update module system relationships
+function updateModuleSystemRelationships() {
+    try {
+        $db = Database::getInstance()->getDatabase();
+        $modulesCollection = $db->getCollection('modules');
+        $overallCollection = $db->getCollection('overall');
+        
+        // Get all modules
+        $modulesCursor = $modulesCollection->find([]);
+        
+        foreach ($modulesCursor as $module) {
+            if (!isset($module['id'])) continue;
+            
+            $moduleId = $module['id'];
+            $moduleName = $module['name'] ?? '';
+            $currentSystemName = $module['system_name'] ?? '';
+            
+            // Check if this module still has any features/dependencies
+            $dependencyCount = $overallCollection->countDocuments(['module_id' => $moduleId]);
+            
+            if ($dependencyCount === 0) {
+                // No more dependencies - check if we need to clear system relationship
+                // Only clear if the module was previously linked to a system
+                if (!empty($currentSystemName) && $currentSystemName !== 'Unknown System') {
+                    
+                    // Option 1: Clear system relationship completely (makes module independent)
+                    $modulesCollection->updateOne(
+                        ['id' => $moduleId],
+                        ['$set' => [
+                            'system_name' => '',
+                            'system_name_id' => null,
+                            'updated_at' => new MongoDB\BSON\UTCDateTime()
+                        ]]
+                    );
+                    
+                    error_log("Cleared system relationship for module '{$moduleName}' (ID: {$moduleId}) - no more dependencies");
+                    
+                    // Option 2: Alternative approach - mark as "No Current System" instead of clearing
+                    // Uncomment this if you prefer to show "No Current System" instead of empty
+                    /*
+                    $modulesCollection->updateOne(
+                        ['id' => $moduleId],
+                        ['$set' => [
+                            'system_name' => 'No Current System',
+                            'system_name_id' => 0,
+                            'updated_at' => new MongoDB\BSON\UTCDateTime()
+                        ]]
+                    );
+                    */
+                }
+            } else {
+                // Still has dependencies - ensure system relationship is maintained
+                // Get the current system from existing features
+                $currentFeature = $overallCollection->findOne(['module_id' => $moduleId]);
+                
+                if ($currentFeature && isset($currentFeature['system_name'])) {
+                    $actualSystemName = $currentFeature['system_name'];
+                    
+                    // Update module if system name doesn't match
+                    if ($currentSystemName !== $actualSystemName) {
+                        // Find system_name_id from system_names collection
+                        $systemNamesCollection = $db->getCollection('system_names');
+                        $systemDoc = $systemNamesCollection->findOne(['name' => $actualSystemName]);
+                        $systemNameId = $systemDoc ? $systemDoc['id'] : 0;
+                        
+                        $modulesCollection->updateOne(
+                            ['id' => $moduleId],
+                            ['$set' => [
+                                'system_name' => $actualSystemName,
+                                'system_name_id' => $systemNameId,
+                                'updated_at' => new MongoDB\BSON\UTCDateTime()
+                            ]]
+                        );
+                        
+                        error_log("Updated system relationship for module '{$moduleName}' (ID: {$moduleId}) to '{$actualSystemName}'");
+                    }
+                }
+            }
+        }
+        
+        // Clear any cached data
+        $_SESSION['last_data_update'] = time();
+        
+    } catch (Exception $e) {
+        error_log("Error updating module system relationships: " . $e->getMessage());
+    }
 }
 
 // Redirect back to main page

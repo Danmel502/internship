@@ -131,6 +131,84 @@ register_shutdown_function($cleanupSession);
     <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet">
     
     <style>
+
+        /* Prevent Bootstrap from interfering with our custom closing */
+#featureFormCollapse.custom-closing {
+    height: auto !important;
+    transition: none !important;
+}
+
+/* Restore Bootstrap behavior after our custom animation */
+#featureFormCollapse:not(.custom-closing) {
+    transition: height 0.4s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+/* Ensure chevron animation is smooth in both directions */
+.collapsible-header .chevron-icon {
+    transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    font-size: 1.3em;
+    color: #198754;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: rgba(25, 135, 84, 0.1);
+    position: relative;
+    z-index: 2;
+}
+
+/* Smooth closing rotation */
+.collapsible-header[aria-expanded="false"] .chevron-icon {
+    transform: rotate(0deg);
+    transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.collapsible-header[aria-expanded="true"] .chevron-icon {
+    transform: rotate(180deg) scale(1.1);
+    transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+        /* Enhanced expanded state styling */
+.collapsible-header.expanded {
+    background: linear-gradient(145deg, #e8f5e8 0%, #d4edda 50%, #c3e6cb 100%);
+    border-color: rgba(25, 135, 84, 0.3);
+    box-shadow: 0 6px 20px rgba(25, 135, 84, 0.2), 0 3px 10px rgba(0,0,0,0.06);
+    transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Smooth transition back to normal state */
+.collapsible-header:not(.expanded) {
+    transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.collapsible-header.expanded h5 {
+    color: #155724;
+}
+
+.collapsible-header.expanded h5 i.fa-plus-circle {
+    color: #155724;
+    transform: rotate(90deg) scale(1.1);
+}
+
+/* Add subtle pulse animation when expanded */
+.collapsible-header.expanded::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    border-radius: 12px;
+    background: linear-gradient(145deg, transparent, rgba(25, 135, 84, 0.05));
+    animation: expandedPulse 3s ease-in-out infinite;
+}
+
+@keyframes expandedPulse {
+    0%, 100% { opacity: 0; }
+    50% { opacity: 1; }
+}
         .select2-container {
             width: 100% !important;
         }
@@ -226,59 +304,295 @@ register_shutdown_function($cleanupSession);
           color: white !important;
         }
 
-        /* FIXED: Improved collapsible section styling */
-        .collapsible-header {
-            cursor: pointer;
-            padding: 15px 20px;
-            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-            border: 1px solid #dee2e6;
-            border-radius: 8px;
-            margin-bottom: 0;
-            transition: all 0.3s ease;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        
-        .collapsible-header:hover {
-            background: linear-gradient(135deg, #e9ecef 0%, #dee2e6 100%);
-            transform: translateY(-1px);
-            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
-        }
+        /* Enhanced collapsible section styling */
+.collapsible-header {
+    cursor: pointer;
+    padding: 20px 25px;
+    background: linear-gradient(145deg, #ffffff 0%, #f8f9fa 50%, #e9ecef 100%);
+    border: 2px solid transparent;
+    border-radius: 12px;
+    margin-bottom: 0;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 4px 12px rgba(25, 135, 84, 0.08), 0 2px 6px rgba(0,0,0,0.04);
+    position: relative;
+    overflow: hidden;
+}
+
+.collapsible-header::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(25, 135, 84, 0.05), transparent);
+    transition: left 0.6s ease;
+}
+
+.collapsible-header:hover::before {
+    left: 100%;
+}
+
+.collapsible-header:hover {
+    background: linear-gradient(145deg, #f8fffe 0%, #e8f5e8 50%, #d4edda 100%);
+    transform: translateY(-2px) scale(1.01);
+    box-shadow: 0 8px 25px rgba(25, 135, 84, 0.15), 0 4px 12px rgba(0,0,0,0.08);
+    border-color: rgba(25, 135, 84, 0.2);
+}
+
+.collapsible-header:active {
+    transform: translateY(-1px) scale(1.005);
+    transition: all 0.2s ease;
+}
         
         .collapsible-header h5 {
-            margin: 0;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            font-weight: 600;
-            color: #495057;
-        }
-        
-        .collapsible-header .chevron-icon {
-            transition: transform 0.3s ease;
-            font-size: 1.2em;
-            color: #6c757d;
-        }
-        
-        /* FIXED: Proper rotation states */
-        .collapsible-header[aria-expanded="true"] .chevron-icon {
-            transform: rotate(180deg);
-        }
-        
-        .collapsible-header[aria-expanded="false"] .chevron-icon {
-            transform: rotate(0deg);
-        }
+    margin: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-weight: 700;
+    color: #2c5530;
+    font-size: 1.35rem;
+    letter-spacing: -0.025em;
+    position: relative;
+    z-index: 2;
+}
 
-        /* FIXED: Ensure smooth collapse transition */
-        .collapse {
-            transition: height 0.35s ease;
-        }
+.collapsible-header h5 span:first-child {
+    display: flex;
+    align-items: center;
+    transition: all 0.3s ease;
+}
+
+.collapsible-header:hover h5 span:first-child {
+    transform: translateX(3px);
+}
+
+.collapsible-header h5 i.fa-plus-circle {
+    font-size: 1.4rem;
+    margin-right: 12px;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.collapsible-header:hover h5 i.fa-plus-circle {
+    transform: rotate(90deg) scale(1.1);
+    color: #198754;
+}
         
-        /* Make sure the card connects with the header when expanded */
-        .collapsible-content .card {
-            border-top-left-radius: 0;
-            border-top-right-radius: 0;
-            margin-top: -1px;
-        }
+       .collapsible-header h5 {
+    margin: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-weight: 700;
+    color: #2c5530;
+    font-size: 1.35rem;
+    letter-spacing: -0.025em;
+    position: relative;
+    z-index: 2;
+}
+
+.collapsible-header h5 span:first-child {
+    display: flex;
+    align-items: center;
+    transition: all 0.3s ease;
+}
+
+.collapsible-header:hover h5 span:first-child {
+    transform: translateX(3px);
+}
+
+.collapsible-header h5 i.fa-plus-circle {
+    font-size: 1.4rem;
+    margin-right: 12px;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.collapsible-header:hover h5 i.fa-plus-circle {
+    transform: rotate(90deg) scale(1.1);
+    color: #198754;
+}
+
+ /* Enhanced collapse with content coordination */
+#featureFormCollapse {
+    transition: height 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden;
+}
+
+#featureFormCollapse.collapsing {
+    transition: height 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden;
+}
+
+/* Ensure content slides properly during collapse */
+#featureFormCollapse.collapsing .collapsible-content .card {
+    opacity: 0;
+    transform: translateY(-20px) scale(0.97);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+#featureFormCollapse.collapsing .card-body > * {
+    opacity: 0;
+    transform: translateY(-10px);
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+        
+        /* Enhanced card connection and styling */
+.collapsible-content {
+    margin-top: -2px;
+    position: relative;
+    z-index: 1;
+}
+
+.collapsible-content .card {
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+    border: 2px solid rgba(25, 135, 84, 0.1);
+    border-top: none;
+    box-shadow: 0 8px 25px rgba(25, 135, 84, 0.08), 0 4px 12px rgba(0,0,0,0.04);
+    backdrop-filter: blur(10px);
+    background: rgba(255, 255, 255, 0.95);
+    transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    transform-origin: top center;
+}
+
+.collapsible-content .card {
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+    border: 2px solid rgba(25, 135, 84, 0.1);
+    border-top: none;
+    box-shadow: 0 8px 25px rgba(25, 135, 84, 0.08), 0 4px 12px rgba(0,0,0,0.04);
+    backdrop-filter: blur(10px);
+    background: rgba(255, 255, 255, 0.95);
+    transform-origin: top center;
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Card states during collapse animation */
+.collapsible-content .card.card-opening {
+    animation: slideInCard 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.collapsible-content .card.card-closing {
+    animation: slideOutCard 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes slideInCard {
+    0% {
+        opacity: 0;
+        transform: translateY(-15px) scale(0.98);
+    }
+    100% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+@keyframes slideOutCard {
+    0% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+        box-shadow: 0 8px 25px rgba(25, 135, 84, 0.08), 0 4px 12px rgba(0,0,0,0.04);
+    }
+    100% {
+        opacity: 0;
+        transform: translateY(-20px) scale(0.96);
+        box-shadow: 0 2px 8px rgba(25, 135, 84, 0.02), 0 1px 3px rgba(0,0,0,0.01);
+    }
+}
+
+/* Enhanced smooth content sliding with better closing */
+.collapsible-content {
+    margin-top: -2px;
+    position: relative;
+    z-index: 1;
+    overflow: hidden;
+}
+
+.collapsible-content .card {
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+    border: 2px solid rgba(25, 135, 84, 0.1);
+    border-top: none;
+    box-shadow: 0 8px 25px rgba(25, 135, 84, 0.08), 0 4px 12px rgba(0,0,0,0.04);
+    backdrop-filter: blur(10px);
+    background: rgba(255, 255, 255, 0.95);
+    transform-origin: top center;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Default hidden state */
+#featureFormCollapse:not(.show):not(.custom-closing) .collapsible-content .card {
+    opacity: 0;
+    transform: translateY(-30px) scale(0.95);
+}
+
+/* Shown state */
+#featureFormCollapse.show .collapsible-content .card {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+}
+
+/* Content elements default states */
+#featureFormCollapse .card-body > * {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+#featureFormCollapse:not(.show):not(.custom-closing) .card-body > * {
+    opacity: 0;
+    transform: translateY(-15px);
+}
+
+#featureFormCollapse.show .card-body > * {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+#featureFormCollapse.collapsing .collapsible-content .card {
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Individual form elements sliding animation */
+#featureFormCollapse .card-body > * {
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    transition-delay: 0s;
+}
+
+#featureFormCollapse:not(.show) .card-body > * {
+    opacity: 0;
+    transform: translateY(-15px);
+}
+
+#featureFormCollapse.show .card-body > * {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+/* Staggered animation for form rows */
+#featureFormCollapse.show .row.g-3 > .col-md-6:nth-child(1),
+#featureFormCollapse.show .row.g-3 > .col-md-6:nth-child(2) {
+    transition-delay: 0.1s;
+}
+
+#featureFormCollapse.show .row.g-3 > .col-md-6:nth-child(3),
+#featureFormCollapse.show .row.g-3 > .col-md-6:nth-child(4) {
+    transition-delay: 0.2s;
+}
+
+#featureFormCollapse.show .row.g-3 > .col-12:nth-child(5) {
+    transition-delay: 0.3s;
+}
+
+#featureFormCollapse.show .row.g-3 > .col-md-6:nth-child(6),
+#featureFormCollapse.show .row.g-3 > .col-md-6:nth-child(7) {
+    transition-delay: 0.4s;
+}
+
+#featureFormCollapse.show .row.g-3 > .col-12:nth-child(8) {
+    transition-delay: 0.5s;
+}
     </style>
 
     <style>
@@ -460,6 +774,116 @@ register_shutdown_function($cleanupSession);
         min-height: 42px;
     }
 }
+
+/* Ultra-smooth momentum-based content sliding */
+@media (prefers-reduced-motion: no-preference) {
+    #featureFormCollapse .collapsible-content .card {
+        transition: all 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    }
+    
+    #featureFormCollapse .card-body > * {
+        transition: all 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    }
+}
+
+/* Smooth content bounce effect on open */
+#featureFormCollapse.show .collapsible-content .card {
+    animation: contentSlideIn 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+}
+
+@keyframes contentSlideIn {
+    0% {
+        opacity: 0;
+        transform: translateY(-40px) scale(0.9);
+    }
+    60% {
+        opacity: 0.8;
+        transform: translateY(5px) scale(1.02);
+    }
+    100% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+/* Smooth content slide out */
+#featureFormCollapse.collapsing .collapsible-content .card {
+    animation: contentSlideOut 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+/* Custom closing animation states */
+#featureFormCollapse.custom-closing {
+    overflow: hidden;
+}
+
+#featureFormCollapse.custom-closing .collapsible-content .card {
+    animation: smoothCloseCard 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+#featureFormCollapse.custom-closing .card-body > * {
+    animation: smoothCloseContent 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+/* Reverse staggered closing for form elements */
+#featureFormCollapse.custom-closing .row.g-3 > .col-12:nth-child(8) {
+    animation-delay: 0s;
+}
+
+#featureFormCollapse.custom-closing .row.g-3 > .col-md-6:nth-child(6),
+#featureFormCollapse.custom-closing .row.g-3 > .col-md-6:nth-child(7) {
+    animation-delay: 0.05s;
+}
+
+#featureFormCollapse.custom-closing .row.g-3 > .col-12:nth-child(5) {
+    animation-delay: 0.1s;
+}
+
+#featureFormCollapse.custom-closing .row.g-3 > .col-md-6:nth-child(3),
+#featureFormCollapse.custom-closing .row.g-3 > .col-md-6:nth-child(4) {
+    animation-delay: 0.15s;
+}
+
+#featureFormCollapse.custom-closing .row.g-3 > .col-md-6:nth-child(1),
+#featureFormCollapse.custom-closing .row.g-3 > .col-md-6:nth-child(2) {
+    animation-delay: 0.2s;
+}
+
+@keyframes smoothCloseCard {
+    0% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+        box-shadow: 0 8px 25px rgba(25, 135, 84, 0.08), 0 4px 12px rgba(0,0,0,0.04);
+    }
+    100% {
+        opacity: 0;
+        transform: translateY(-25px) scale(0.96);
+        box-shadow: 0 2px 8px rgba(25, 135, 84, 0.02), 0 1px 3px rgba(0,0,0,0.01);
+    }
+}
+
+@keyframes smoothCloseContent {
+    0% {
+        opacity: 1;
+        transform: translateY(0);
+    }
+    100% {
+        opacity: 0;
+        transform: translateY(-15px);
+    }
+}
+
+@keyframes contentSlideOut {
+    0% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+    100% {
+        opacity: 0;
+        transform: translateY(-30px) scale(0.95);
+    }
+}
+
+
 </style>
 </head>
 <body class="bg-light">
@@ -793,14 +1217,57 @@ $(document).ready(function() {
     updateCharCounter();
     $('#description').on('input', updateCharCounter);
     
-    // Let Bootstrap handle the collapse state automatically
-    $('#featureFormCollapse').on('show.bs.collapse', function () {
-        $('.collapsible-header').attr('aria-expanded', 'true');
-    });
+// Enhanced toggle function with smooth closing
+function toggleForm() {
+    const collapseElement = document.getElementById('featureFormCollapse');
+    const $collapse = $(collapseElement);
+    
+    if ($collapse.hasClass('show')) {
+        // Trigger our custom close
+        $collapse.trigger('hide.bs.collapse');
+    } else {
+        // Use normal Bootstrap open
+        const collapse = new bootstrap.Collapse(collapseElement);
+    }
+}
 
-    $('#featureFormCollapse').on('hide.bs.collapse', function () {
-        $('.collapsible-header').attr('aria-expanded', 'false');
-    });
+// Enhanced content animation with smooth closing
+$('#featureFormCollapse').on('show.bs.collapse', function () {
+    $('.collapsible-header').attr('aria-expanded', 'true');
+    
+    // Trigger header animation
+    setTimeout(() => {
+        $('.collapsible-header').addClass('expanded');
+    }, 50);
+});
+
+$('#featureFormCollapse').on('shown.bs.collapse', function () {
+    // Clean up after opening animation completes
+    $(this).find('.card-body > *').css('transition-delay', '');
+});
+
+// CRITICAL: Start closing animation BEFORE Bootstrap starts collapsing
+$('#featureFormCollapse').on('hide.bs.collapse', function (e) {
+    $('.collapsible-header').attr('aria-expanded', 'false').removeClass('expanded');
+    
+    // Prevent Bootstrap from immediately starting the collapse
+    e.preventDefault();
+    
+    // Start our custom closing animation first
+    $(this).addClass('custom-closing');
+    
+    // After our content animation finishes, let Bootstrap complete the collapse
+    setTimeout(() => {
+        $(this).removeClass('custom-closing');
+        // Now trigger Bootstrap's collapse
+        new bootstrap.Collapse(this, { toggle: false }).hide();
+    }, 400); // Match our content animation duration
+});
+
+$('#featureFormCollapse').on('hidden.bs.collapse', function () {
+    // Clean up after closing
+    $(this).removeClass('custom-closing');
+});
 });
 </script>
 

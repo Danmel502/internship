@@ -1,5 +1,6 @@
 <?php
 // Helper function to safely format date
+
 function formatDate($dateField) {
     try {
         if (isset($dateField) && $dateField instanceof MongoDB\BSON\UTCDateTime) {
@@ -118,12 +119,15 @@ function highlightSearchTerm($text, $searchTerm) {
         </div>
     </div>
 <?php else: ?>
+
     <!-- Features Table -->
     <div class="container-fluid px-4">
         <div class="table-responsive rounded-3 shadow-sm border">
             <table class="table table-hover align-middle mb-0">
                 <thead class="table-light">
                     <tr>
+                        <!-- Empty header for checkbox column -->
+                        <th class="py-3" style="width: 40px;"></th>
                         <th class="py-3 text-uppercase small fw-bold text-muted">Created At</th>
                         <th class="py-3 text-uppercase small fw-bold text-muted">System Name</th>
                         <th class="py-3 text-uppercase small fw-bold text-muted">Module</th>
@@ -132,14 +136,15 @@ function highlightSearchTerm($text, $searchTerm) {
                         <th class="py-3 text-uppercase small fw-bold text-muted">Client</th>
                         <th class="py-3 text-uppercase small fw-bold text-muted">Source</th>
                         <th class="py-3 text-uppercase small fw-bold text-muted">File or URLs</th>
+                        <!-- Header for Actions column -->
                         <th class="py-3 text-uppercase small fw-bold text-muted text-end pe-4">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php foreach ($features as $feature): ?>
-                        <tr class="position-relative">
+    <tr class="position-relative" data-feature-id="<?= (string)$feature['_id'] ?>">
                             <!-- Checkbox Column -->
-                            <td class="ps-4">
+                            <td class="ps-3">
                                 <input type="checkbox" class="feature-checkbox form-check-input" 
                                        value="<?= (string)$feature['_id'] ?>"
                                        data-name="<?= safeDisplayText($feature['feature'] ?? 'Unknown') ?>">
@@ -153,19 +158,20 @@ function highlightSearchTerm($text, $searchTerm) {
                                 </div>
                             </td>
                             
-                            <!-- System Name -->
-                            <td>
-                                <div class="d-flex align-items-center">
-                                    <span class="badge bg-primary bg-opacity-10 text-primary me-2">Sys</span>
-                                    <?= highlightSearchTerm($feature['system_name'] ?? '', $search) ?>
-                                </div>
-                            </td>
+                        <td>
+    <div class="d-flex align-items-center">
+        <span class="badge bg-primary bg-opacity-10 text-primary me-2">Sys</span>
+        <?= highlightSearchTerm($feature['system_name'] ?? '', $search) ?>
+    </div>
+</td>
                             
-                            <!-- Module -->
-                          <td>
-    <span class="text-dark">
-        <?= highlightSearchTerm($feature['module'] ?? '', $search) ?>
-    </span>
+   <!-- In the Module column -->
+<td>
+    <div class="d-flex align-items-center">
+        <span class="text-dark">
+            <?= highlightSearchTerm($feature['module'] ?? '', $search) ?>
+        </span>
+    </div>
 </td>
                             
                             <!-- Feature -->
@@ -254,32 +260,34 @@ function highlightSearchTerm($text, $searchTerm) {
                             </td>
                             
                             <!-- Actions -->
-                            <td class="pe-4">
-                                <div class="d-flex gap-2 justify-content-end">
-                                   <button class="btn btn-sm btn-outline-success rounded-pill d-flex align-items-center"
-        data-id="<?= (string)$feature['_id'] ?>"
-        data-bs-toggle="modal"
-        data-bs-target="#editModal<?= (string)$feature['_id'] ?>"
-        title="Edit feature">
-    <i class="fas fa-edit me-1"></i>Edit
-</button>
-                                    
-                                    <button class="btn btn-sm btn-outline-danger rounded-pill d-flex align-items-center"
-                                            onclick="confirmDelete('<?= (string)$feature['_id'] ?>', '<?= safeDisplayText($feature['feature'] ?? $feature['system_name'] ?? 'Unknown') ?>')"
-                                            title="Delete feature">
-                                        <i class="fas fa-trash-alt me-1"></i>Delete
-                                    </button>
-                                </div>
-                            </td>
-                        </tr>
+<td class="pe-4">
+    <div class="d-flex gap-2 justify-content-end">
+        <button class="btn btn-sm btn-outline-success rounded-pill d-flex align-items-center edit-module-btn"
+            data-id="<?= (string)$feature['_id'] ?>"
+            data-bs-toggle="modal"
+            data-bs-target="#editModal<?= (string)$feature['_id'] ?>"
+            data-feature-id="<?= (string)$feature['_id'] ?>"
+            data-system-name="<?= htmlspecialchars($feature['system_name'] ?? '') ?>"
+            data-module-name="<?= htmlspecialchars($feature['module'] ?? '') ?>"
+            title="Edit feature">
+            <i class="fas fa-edit me-1"></i>Edit
+        </button>
+        
+        <button class="btn btn-sm btn-outline-danger rounded-pill d-flex align-items-center"
+                onclick="confirmDelete('<?= (string)$feature['_id'] ?>', '<?= safeDisplayText($feature['feature'] ?? $feature['system_name'] ?? 'Unknown') ?>')"
+                title="Delete feature">
+            <i class="fas fa-trash-alt me-1"></i>Delete
+        </button>
+    </div>
+</td>
                         
-                        <?php 
-                        // Include edit modal for each feature
-                        if (file_exists(__DIR__ . '/edit_modal.php')) {
-                            include __DIR__ . '/edit_modal.php';
-                        }
-                        ?>
-                    <?php endforeach; ?>
+                         <?php 
+    // Include edit modal for each feature
+    if (file_exists(__DIR__ . '/edit_modal.php')) {
+        include __DIR__ . '/edit_modal.php';
+    }
+    ?>
+    <?php endforeach; ?>
                 </tbody>
             </table>
         </div>
@@ -425,6 +433,40 @@ function highlightSearchTerm($text, $searchTerm) {
 </div>
 
 <script>
+
+    // Check if modules were updated and refresh data
+document.addEventListener('DOMContentLoaded', function() {
+    const moduleUpdated = sessionStorage.getItem('moduleUpdated');
+    const lastUpdate = sessionStorage.getItem('lastModuleUpdate');
+    
+    if (moduleUpdated === 'true' && lastUpdate) {
+        // Clear the flags
+        sessionStorage.removeItem('moduleUpdated');
+        sessionStorage.removeItem('lastModuleUpdate');
+        
+        // Refresh the page to get updated data
+        window.location.reload();
+    }
+});
+
+// Check if modules were updated and refresh data
+document.addEventListener('DOMContentLoaded', function() {
+    // Check URL parameter for module update
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('from_modules') === 'updated') {
+        // Remove the parameter and refresh
+        window.history.replaceState({}, document.title, window.location.pathname);
+        window.location.reload();
+    }
+    
+    // Also check sessionStorage for updates from edit modal
+    const dataUpdated = sessionStorage.getItem('dataUpdated');
+    if (dataUpdated === 'true') {
+        sessionStorage.removeItem('dataUpdated');
+        window.location.reload();
+    }
+});
+
 // Enhanced search functionality with loading state
 document.addEventListener('DOMContentLoaded', function() {
     // Initialize tooltips
@@ -572,18 +614,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Rest of your existing bulk delete functionality...
     const selectAllCheckbox = document.getElementById('selectAll');
-    const selectAllHeader = document.getElementById('selectAllHeader');
     const featureCheckboxes = document.querySelectorAll('.feature-checkbox');
     const bulkDeleteBtn = document.getElementById('bulkDeleteBtn');
     const selectedCount = document.getElementById('selectedCount');
-
-    // Sync both select all checkboxes
-    function syncSelectAll() {
-        if (selectAllCheckbox && selectAllHeader) {
-            selectAllCheckbox.checked = selectAllHeader.checked;
-            selectAllHeader.checked = selectAllCheckbox.checked;
-        }
-    }
 
     // Update button state and count
     function updateBulkActions() {
@@ -601,22 +634,15 @@ document.addEventListener('DOMContentLoaded', function() {
             selectAllCheckbox.checked = allChecked;
             selectAllCheckbox.indeterminate = !allChecked && !noneChecked;
         }
-        if (selectAllHeader) {
-            selectAllHeader.checked = allChecked;
-            selectAllHeader.indeterminate = !allChecked && !noneChecked;
-        }
     }
 
     // Select all functionality
-    [selectAllCheckbox, selectAllHeader].forEach(checkbox => {
-        if (checkbox) {
-            checkbox.addEventListener('change', function() {
-                featureCheckboxes.forEach(cb => cb.checked = this.checked);
-                syncSelectAll();
-                updateBulkActions();
-            });
-        }
-    });
+    if (selectAllCheckbox) {
+        selectAllCheckbox.addEventListener('change', function() {
+            featureCheckboxes.forEach(cb => cb.checked = this.checked);
+            updateBulkActions();
+        });
+    }
 
     // Individual checkbox changes
     featureCheckboxes.forEach(checkbox => {
@@ -705,6 +731,7 @@ function confirmDelete(id, name) {
 </script>
 
 <style>
+
 /* Improved overall styling */
 body {
     background-color: #f8f9fa;
@@ -868,7 +895,7 @@ body {
 
 /* Loading state for search input */
 #searchInput.searching {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%23666' viewBox='0 0 16 16'%3E%3Cpath d='M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%23666' viewBox='0 0 16 16'%3E%3Cpath d='M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.040.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: right 8px center;
     background-size: 16px;

@@ -322,43 +322,125 @@ private static function expandSearchQuery($searchTerm) {
         return $results;
     }
 
-    /**
- * Get cascading dropdown data based on filters
- * Add this method to your FeatureController.php class
+   /**
+ * Get cascading dropdown data based on filters - FIXED for proper system name to module filtering
  */
 public static function getCascadingData($type, $filters = []) {
     try {
-        $collection = Database::getInstance()->getCollection('overall');
-        if (!$collection) {
+        $db = Database::getInstance()->getDatabase();
+        if (!$db) {
             return ['success' => false, 'error' => 'Database not available'];
         }
 
-        $query = [];
-        
-        // Apply filters
-        foreach ($filters as $field => $value) {
-            if (!empty($value)) {
-                $query[$field] = $value;
+        // Map request types to collection names and ID fields
+        $collectionMap = [
+            'system_name' => ['collection' => 'system_names', 'id_field' => 'system_name_id'],
+            'module' => ['collection' => 'modules', 'id_field' => 'module_id'],
+            'feature' => ['collection' => 'features', 'id_field' => 'feature_id'], 
+            'client' => ['collection' => 'clients', 'id_field' => 'client_id'],
+            'source' => ['collection' => 'sources', 'id_field' => 'source_id']
+        ];
+
+        if (!isset($collectionMap[$type])) {
+            return ['success' => false, 'error' => 'Invalid type parameter'];
+        }
+
+        $targetCollection = $collectionMap[$type]['collection'];
+        $targetIdField = $collectionMap[$type]['id_field'];
+
+        // If no filters, get all active items from reference collection
+        if (empty($filters)) {
+            $collection = $db->getCollection($targetCollection);
+            $cursor = $collection->find(['is_active' => true], ['sort' => ['name' => 1]]);
+            
+            $values = [];
+            foreach ($cursor as $doc) {
+                if (!empty($doc['name'])) {
+                    $values[] = trim($doc['name']);
+                }
+            }
+            
+            return ['success' => true, 'data' => array_values(array_unique($values))];
+        }
+
+        // SPECIAL HANDLING FOR MODULES WHEN SYSTEM_NAME IS FILTERED
+        if ($type === 'module' && isset($filters['system_name']) && !empty($filters['system_name'])) {
+            $systemNameFilter = $filters['system_name'];
+            
+            // First, get the system_name_id from the system name
+            $systemNamesCollection = $db->getCollection('system_names');
+            $systemNameDoc = $systemNamesCollection->findOne([
+                'name' => $systemNameFilter, 
+                'is_active' => true
+            ]);
+            
+            if (!$systemNameDoc) {
+                return ['success' => true, 'data' => []];
+            }
+            
+            $systemNameId = $systemNameDoc['id'];
+            
+            // Now get modules that belong to this system name
+            $modulesCollection = $db->getCollection('modules');
+            $cursor = $modulesCollection->find([
+                'system_name_id' => $systemNameId,
+                'is_active' => true
+            ], ['sort' => ['name' => 1]]);
+            
+            $values = [];
+            foreach ($cursor as $doc) {
+                if (!empty($doc['name'])) {
+                    $values[] = trim($doc['name']);
+                }
+            }
+            
+            return ['success' => true, 'data' => array_values(array_unique($values))];
+        }
+
+        // For other types or complex filters, use the overall collection approach
+        $overallCollection = $db->getCollection('overall');
+        $filterQuery = [];
+
+        // Convert filter names to their corresponding ID lookups for overall collection filtering
+        foreach ($filters as $filterField => $filterValue) {
+            if (empty($filterValue)) continue;
+            
+            if (isset($collectionMap[$filterField])) {
+                $filterCollection = $collectionMap[$filterField]['collection'];
+                $filterIdField = $collectionMap[$filterField]['id_field'];
+                
+                // Get the ID for this filter value
+                $refCollection = $db->getCollection($filterCollection);
+                $refDoc = $refCollection->findOne(['name' => $filterValue, 'is_active' => true]);
+                
+                if ($refDoc) {
+                    $filterQuery[$filterIdField] = $refDoc['id'];
+                }
             }
         }
 
-        // Ensure the target field is not empty
-        $query[$type] = ['$ne' => null, '$ne' => ''];
-
-        // Get distinct values
-        $values = $collection->distinct($type, $query);
+        // Get distinct target IDs from overall collection that match filters
+        $validIds = $overallCollection->distinct($targetIdField, $filterQuery);
         
-        // Filter out empty values and sort
-        $filteredValues = array_filter($values, function($value) {
-            return !empty(trim($value));
-        });
-        
-        sort($filteredValues);
+        if (empty($validIds)) {
+            return ['success' => true, 'data' => []];
+        }
 
-        return [
-            'success' => true,
-            'data' => array_values($filteredValues)
-        ];
+        // Get names for these valid IDs from reference collection
+        $targetCollectionObj = $db->getCollection($targetCollection);
+        $cursor = $targetCollectionObj->find([
+            'id' => ['$in' => $validIds],
+            'is_active' => true
+        ], ['sort' => ['name' => 1]]);
+        
+        $values = [];
+        foreach ($cursor as $doc) {
+            if (!empty($doc['name'])) {
+                $values[] = trim($doc['name']);
+            }
+        }
+
+        return ['success' => true, 'data' => array_values(array_unique($values))];
 
     } catch (Exception $e) {
         error_log("Error getting cascading data: " . $e->getMessage());
@@ -434,47 +516,62 @@ public static function getCascadingData($type, $filters = []) {
                 }
             }
 
-            // Clean up reference collections (system_names, clients, modules, features, sources)
-            $cleanupCount = 0;
-            $db = Database::getInstance()->getDatabase();
-            if ($db) {
-                // Get all unique values that were deleted
-                $deletedValues = [];
-                
-                foreach ($featuresToDelete as $feature) {
-                    $fields = ['system_name', 'module', 'feature', 'client', 'source'];
-                    foreach ($fields as $field) {
-                        $value = $feature[$field] ?? '';
-                        if (!empty($value)) {
-                            if (!isset($deletedValues[$field])) {
-                                $deletedValues[$field] = [];
-                            }
-                            $deletedValues[$field][] = $value;
-                        }
-                    }
+            // Clean up reference collections based on IDs
+$cleanupCount = 0;
+$db = Database::getInstance()->getDatabase();
+if ($db) {
+    // Get all unique IDs that were deleted
+    $deletedIds = [];
+    
+    foreach ($featuresToDelete as $feature) {
+        $idFields = [
+            'system_name_id' => 'system_names',
+            'module_id' => 'modules',
+            'feature_id' => 'features',
+            'client_id' => 'clients',
+            'source_id' => 'sources'
+        ];
+        
+        foreach ($idFields as $idField => $collectionName) {
+            $id = $feature[$idField] ?? null;
+            if (!empty($id)) {
+                if (!isset($deletedIds[$collectionName])) {
+                    $deletedIds[$collectionName] = [];
                 }
+                $deletedIds[$collectionName][] = $id;
+            }
+        }
+    }
 
-                // Clean up each reference collection
-                foreach ($deletedValues as $field => $values) {
-                    $uniqueValues = array_unique($values);
-                    $collectionName = $field . 's'; // pluralize (system_names, clients, etc.)
-                    
-                    foreach ($uniqueValues as $value) {
-                        // Check if this value is still used in other documents
-                        $stillUsed = $collection->countDocuments([$field => $value]);
-                        
-                        if ($stillUsed === 0) {
-                            // Value is no longer used, remove from reference collection
-                            $refCollection = $db->getCollection($collectionName);
-                            $deleteResult = $refCollection->deleteOne(['name' => $value, 'is_active' => true]);
-                            if ($deleteResult->getDeletedCount() > 0) {
-                                $cleanupCount++;
-                                error_log("Cleaned up unused reference: {$collectionName} - {$value}");
-                            }
-                        }
-                    }
+    // Clean up each reference collection
+    foreach ($deletedIds as $collectionName => $ids) {
+        $uniqueIds = array_unique($ids);
+        $idFieldMap = [
+            'system_names' => 'system_name_id',
+            'modules' => 'module_id', 
+            'features' => 'feature_id',
+            'clients' => 'client_id',
+            'sources' => 'source_id'
+        ];
+        
+        $idField = $idFieldMap[$collectionName];
+        
+        foreach ($uniqueIds as $id) {
+            // Check if this ID is still used in other documents
+            $stillUsed = $collection->countDocuments([$idField => $id]);
+            
+            if ($stillUsed === 0) {
+                // ID is no longer used, remove from reference collection
+                $refCollection = $db->getCollection($collectionName);
+                $deleteResult = $refCollection->deleteOne(['id' => $id, 'is_active' => true]);
+                if ($deleteResult->getDeletedCount() > 0) {
+                    $cleanupCount++;
+                    error_log("Cleaned up unused reference: {$collectionName} - ID {$id}");
                 }
             }
+        }
+    }
+}
 
             $message = "Successfully deleted {$result->getDeletedCount()} feature(s)";
             if ($filesDeleted > 0) {
@@ -573,13 +670,7 @@ public static function getCascadingData($type, $filters = []) {
     }
 }
 
-    // ====== ALL YOUR ORIGINAL METHODS BELOW ======
-
-    /**
- * Convert stored IDs back to display names for frontend
- */
-
-private static function convertToDisplayFormat($features) {
+   private static function convertToDisplayFormat($features) {
     if (empty($features)) return $features;
     
     $db = Database::getInstance();
@@ -600,59 +691,44 @@ private static function convertToDisplayFormat($features) {
     $sourcesCache = [];
     
     foreach ($features as &$feature) {
-        // Convert system name ID (facebook_1) back to display name (Facebook)
-        if (!empty($feature['system_name']) && preg_match('/[a-z0-9]+_(\d+)/', $feature['system_name'], $matches)) {
-            $numericId = (int)$matches[1];
-            
-            if (!isset($systemNamesCache[$numericId])) {
-                $systemName = $systemNamesCollection->findOne(['id' => $numericId, 'is_active' => true]);
-                $systemNamesCache[$numericId] = $systemName ? $systemName['name'] : $feature['system_name'];
+        // Get system name from ID
+        if (!empty($feature['system_name_id'])) {
+            $systemNameId = $feature['system_name_id'];
+            if (!isset($systemNamesCache[$systemNameId])) {
+                $systemName = $systemNamesCollection->findOne(['id' => $systemNameId, 'is_active' => true]);
+                $systemNamesCache[$systemNameId] = $systemName ? $systemName['name'] : 'Unknown System';
             }
-            $feature['system_name'] = $systemNamesCache[$numericId];
+            $feature['system_name'] = $systemNamesCache[$systemNameId];
         }
         
-        // Convert module ID (seven_1) back to display name (Seven)
-        if (!empty($feature['module']) && preg_match('/[a-z0-9]+_(\d+)/', $feature['module'], $matches)) {
-            $numericId = (int)$matches[1];
-            
-            if (!isset($modulesCache[$numericId])) {
-                $module = $modulesCollection->findOne(['id' => $numericId, 'is_active' => true]);
-                $modulesCache[$numericId] = $module ? $module['name'] : $feature['module'];
+        // Get module name from ID
+        if (!empty($feature['module_id'])) {
+            $moduleId = $feature['module_id'];
+            if (!isset($modulesCache[$moduleId])) {
+                $module = $modulesCollection->findOne(['id' => $moduleId, 'is_active' => true]);
+                $modulesCache[$moduleId] = $module ? $module['name'] : 'Unknown Module';
             }
-            $feature['module'] = $modulesCache[$numericId];
+            $feature['module'] = $modulesCache[$moduleId];
         }
         
-        // Convert feature ID (seen_1) back to display name (Seen)
-        if (!empty($feature['feature']) && preg_match('/[a-z0-9]+_(\d+)/', $feature['feature'], $matches)) {
-            $numericId = (int)$matches[1];
-            
-            if (!isset($featuresCache[$numericId])) {
-                $featureDoc = $featuresCollection->findOne(['id' => $numericId, 'is_active' => true]);
-                $featuresCache[$numericId] = $featureDoc ? $featureDoc['name'] : $feature['feature'];
+        // Get client name from ID
+        if (!empty($feature['client_id'])) {
+            $clientId = $feature['client_id'];
+            if (!isset($clientsCache[$clientId])) {
+                $client = $clientsCollection->findOne(['id' => $clientId, 'is_active' => true]);
+                $clientsCache[$clientId] = $client ? $client['name'] : 'Unknown Client';
             }
-            $feature['feature'] = $featuresCache[$numericId];
+            $feature['client'] = $clientsCache[$clientId];
         }
         
-        // Convert client ID (abs_1) back to display name (ABS CBN)
-        if (!empty($feature['client']) && preg_match('/[a-z0-9]+_(\d+)/', $feature['client'], $matches)) {
-            $numericId = (int)$matches[1];
-            
-            if (!isset($clientsCache[$numericId])) {
-                $client = $clientsCollection->findOne(['id' => $numericId, 'is_active' => true]);
-                $clientsCache[$numericId] = $client ? $client['name'] : $feature['client'];
+        // Get source name from ID
+        if (!empty($feature['source_id'])) {
+            $sourceId = $feature['source_id'];
+            if (!isset($sourcesCache[$sourceId])) {
+                $source = $sourcesCollection->findOne(['id' => $sourceId, 'is_active' => true]);
+                $sourcesCache[$sourceId] = $source ? $source['name'] : 'Unknown Source';
             }
-            $feature['client'] = $clientsCache[$numericId];
-        }
-        
-        // Convert source ID (media_2) back to display name (Media)
-        if (!empty($feature['source']) && preg_match('/[a-z0-9]+_(\d+)/', $feature['source'], $matches)) {
-            $numericId = (int)$matches[1];
-            
-            if (!isset($sourcesCache[$numericId])) {
-                $source = $sourcesCollection->findOne(['id' => $numericId, 'is_active' => true]);
-                $sourcesCache[$numericId] = $source ? $source['name'] : $feature['source'];
-            }
-            $feature['source'] = $sourcesCache[$numericId];
+            $feature['source'] = $sourcesCache[$sourceId];
         }
     }
     
@@ -889,9 +965,6 @@ public static function searchFeaturesWithTextIndex($keyword, $limit = 0, $skip =
     }
 }
 
-/**
- * Fixed addFeature method with proper sample_file handling
- */
 public static function addFeature($postData, $fileData = []) {
     try {
         $requiredFields = ['system_name', 'module', 'feature', 'description', 'client', 'source'];
@@ -919,14 +992,12 @@ public static function addFeature($postData, $fileData = []) {
             throw new Exception('Database collection not available');
         }
 
-        
-
         // Store original names for display
-$originalSystemName = self::sanitizeString($postData['system_name']);
-$originalModule = self::sanitizeString($postData['module']);
-$originalFeature = self::sanitizeString($postData['feature']);
-$originalClient = self::sanitizeString($postData['client']);
-$originalSource = self::sanitizeString($postData['source']);
+        $originalSystemName = self::sanitizeString($postData['system_name']);
+        $originalModule = self::sanitizeString($postData['module']);
+        $originalFeature = self::sanitizeString($postData['feature']);
+        $originalClient = self::sanitizeString($postData['client']);
+        $originalSource = self::sanitizeString($postData['source']);
 
         // Handle file upload or URL first
         $sampleFile = null;
@@ -952,25 +1023,25 @@ $originalSource = self::sanitizeString($postData['source']);
         
         if ($db) {
             $systemNameId = self::ensureReferenceDataWithId($db, 'system_names', $originalSystemName);
-$moduleId = self::ensureReferenceDataWithId($db, 'modules', $originalModule);
-$featureId = self::ensureReferenceDataWithId($db, 'features', $originalFeature);
-$clientId = self::ensureReferenceDataWithId($db, 'clients', $originalClient);
-$sourceId = self::ensureReferenceDataWithId($db, 'sources', $originalSource);
+            $moduleId = self::ensureReferenceDataWithId($db, 'modules', $originalModule);
+            $featureId = self::ensureReferenceDataWithId($db, 'features', $originalFeature);
+            $clientId = self::ensureReferenceDataWithId($db, 'clients', $originalClient);
+            $sourceId = self::ensureReferenceDataWithId($db, 'sources', $originalSource);
             
-            // Build data array with proper order
+            // Build data array - ADD THE MISSING system_name AND module FIELDS
             $data = [
-    'system_name' => $originalSystemName,
-    'system_name_id' => $systemNameId,
-    'module' => $originalModule,
-    'module_id' => $moduleId,
-    'feature' => $originalFeature,
-    'feature_id' => $featureId,
-    'description' => self::sanitizeString($postData['description']),
-    'client' => $originalClient,
-    'client_id' => $clientId,
-    'source' => $originalSource,
-    'source_id' => $sourceId
-];
+                'system_name' => $originalSystemName, // ← THIS WAS MISSING
+                'module' => $originalModule,          // ← THIS WAS MISSING
+                'feature' => $originalFeature,
+                'client' => $originalClient,          // ← ADD FOR CONSISTENCY
+                'source' => $originalSource,          // ← ADD FOR CONSISTENCY
+                'feature_id' => $featureId,
+                'system_name_id' => $systemNameId,
+                'module_id' => $moduleId,
+                'client_id' => $clientId,
+                'source_id' => $sourceId,
+                'description' => self::sanitizeString($postData['description'])
+            ];
             
             // Add sample_file if exists
             if ($sampleFile) {
@@ -980,10 +1051,6 @@ $sourceId = self::ensureReferenceDataWithId($db, 'sources', $originalSource);
             // Add timestamps
             $data['created_at'] = new MongoDB\BSON\UTCDateTime();
             $data['updated_at'] = new MongoDB\BSON\UTCDateTime();
-            
-            // Ensure other reference data
-            self::ensureReferenceDataWithId($db, 'features', $data['feature']);
-            self::ensureReferenceDataWithId($db, 'modules', $data['module']);
         }
 
         $result = $overallCollection->insertOne($data);
@@ -1000,9 +1067,6 @@ $sourceId = self::ensureReferenceDataWithId($db, 'sources', $originalSource);
 }
 
 
-/**
- * Update feature - handles both prefixed and non-prefixed field names
- */
 /**
  * Update feature - handles both prefixed and non-prefixed field names
  */
@@ -1067,21 +1131,16 @@ public static function updateFeature($postData, $fileData = []) {
             throw new Exception('Feature not found');
         }
 
-        // Store old values for reference data update
-        $oldValues = [
-            'system_name' => $existingFeature['system_name'] ?? '',
-            'module' => $existingFeature['module'] ?? '',
-            'feature' => $existingFeature['feature'] ?? '',
-            'client' => $existingFeature['client'] ?? '',
-            'source' => $existingFeature['source'] ?? ''
-        ];
-
         // Store original names for display
         $originalSystemName = self::sanitizeString($postData[$fieldMapping['system_name']]);
         $originalModule = self::sanitizeString($postData[$fieldMapping['module']]);
         $originalFeature = self::sanitizeString($postData[$fieldMapping['feature']]);
         $originalClient = self::sanitizeString($postData[$fieldMapping['client']]);
         $originalSource = self::sanitizeString($postData[$fieldMapping['source']]);
+
+        // Store old values for module relationship update
+        $oldSystemName = $existingFeature['system_name'] ?? '';
+        $oldModule = $existingFeature['module'] ?? '';
 
         // Generate IDs for new values
         $db = Database::getInstance()->getDatabase();
@@ -1101,16 +1160,14 @@ public static function updateFeature($postData, $fileData = []) {
 
         $updateData = [
             'system_name' => $originalSystemName,
-            'system_name_id' => $systemNameId,
             'module' => $originalModule,
-            'module_id' => $moduleId,
             'feature' => $originalFeature,
             'feature_id' => $featureId,
-            'description' => self::sanitizeString($postData[$fieldMapping['description']]),
-            'client' => $originalClient,
+            'system_name_id' => $systemNameId,
+            'module_id' => $moduleId,
             'client_id' => $clientId,
-            'source' => $originalSource,
             'source_id' => $sourceId,
+            'description' => self::sanitizeString($postData[$fieldMapping['description']]),
             'updated_at' => new MongoDB\BSON\UTCDateTime()
         ];
 
@@ -1166,22 +1223,296 @@ public static function updateFeature($postData, $fileData = []) {
             throw new Exception('Feature not found or no changes made');
         }
 
-        // Now handle reference data updates
-        if ($db) {
-            // Update reference collections with old -> new value mapping
-            error_log("Starting reference data updates...");
-            self::updateReferenceData($db, 'system_names', $oldValues['system_name'], $updateData['system_name']);
-            self::updateReferenceData($db, 'modules', $oldValues['module'], $updateData['module']);
-            self::updateReferenceData($db, 'features', $oldValues['feature'], $updateData['feature']);
-            self::updateReferenceData($db, 'clients', $oldValues['client'], $updateData['client']);
-            self::updateReferenceData($db, 'sources', $oldValues['source'], $updateData['source']);
-            error_log("Reference data updates completed");
+        // ===== CRITICAL: UPDATE MODULE RELATIONSHIPS FOR CASCADING DROPDOWNS =====
+        // Check if system_name or module was changed
+        if (($oldSystemName !== $originalSystemName || $oldModule !== $originalModule) && $db) {
+            self::updateModuleRelationships($db, $oldSystemName, $oldModule, $originalSystemName, $originalModule);
         }
+
+        // Set timestamp for refresh
+        $_SESSION['last_update_time'] = time();
 
         return ['success' => true];
     } catch (Exception $e) {
         error_log("Error updating feature: " . $e->getMessage());
         return ['success' => false, 'errors' => ['general' => $e->getMessage()]];
+    }
+}
+
+// ===== ADD THIS NEW METHOD TO YOUR FeatureController CLASS =====
+private static function updateModuleRelationships($db, $oldSystemName, $oldModule, $newSystemName, $newModule) {
+    try {
+        $modulesCollection = $db->getCollection('modules');
+        $overallCollection = $db->getCollection('overall');
+        
+        // Check if the new module already exists for this system
+        $existingModule = $modulesCollection->findOne([
+            'name' => $newModule,
+            'system_name' => $newSystemName,
+            'is_active' => true
+        ]);
+        
+        if (!$existingModule) {
+            // Create the new module if it doesn't exist
+            $lastModuleDoc = $modulesCollection->findOne([], ['sort' => ['id' => -1]]);
+            $nextModuleId = ($lastModuleDoc['id'] ?? 0) + 1;
+            
+            // Try to find system_name_id
+            $systemNamesCollection = $db->getCollection('system_names');
+            $systemNameDoc = $systemNamesCollection->findOne(['name' => $newSystemName]);
+            $systemNameId = $systemNameDoc['id'] ?? 0;
+            
+            $modulesCollection->insertOne([
+                'id' => $nextModuleId,
+                'name' => $newModule,
+                'description' => 'Created from feature edit',
+                'system_name' => $newSystemName,
+                'system_name_id' => $systemNameId,
+                'is_active' => true,
+                'created_at' => new MongoDB\BSON\UTCDateTime(),
+                'updated_at' => new MongoDB\BSON\UTCDateTime()
+            ]);
+            
+            // Also update the overall collection for AJAX compatibility
+            $overallCollection->updateMany(
+                [
+                    'system_name' => $newSystemName,
+                    'module' => $newModule
+                ],
+                ['$set' => [
+                    'module_id' => $nextModuleId,
+                    'updated_at' => new MongoDB\BSON\UTCDateTime()
+                ]],
+                ['upsert' => true]
+            );
+        }
+        
+        // Update all features with the old module to use the new module
+        if (!empty($oldSystemName) && !empty($oldModule)) {
+            $overallCollection->updateMany(
+                [
+                    'system_name' => $oldSystemName,
+                    'module' => $oldModule
+                ],
+                ['$set' => [
+                    'system_name' => $newSystemName,
+                    'module' => $newModule,
+                    'updated_at' => new MongoDB\BSON\UTCDateTime()
+                ]]
+            );
+        }
+        
+        return true;
+    } catch (Exception $e) {
+        error_log("Module relationship update error: " . $e->getMessage());
+        return false;
+    }
+}
+
+public static function updateFeatureModuleRelationship($systemName, $oldModule, $newModule, $featureId = null) {
+    try {
+        $db = Database::getInstance()->getDatabase();
+        $modulesCollection = $db->getCollection('modules');
+        $overallCollection = $db->getCollection('overall');
+        
+        // Check if the new module already exists for this system
+        $existingModule = $modulesCollection->findOne([
+            'name' => $newModule,
+            'system_name' => $systemName,
+            'is_active' => true
+        ]);
+        
+        if (!$existingModule) {
+            // Create the new module if it doesn't exist
+            $lastModuleDoc = $modulesCollection->findOne([], ['sort' => ['id' => -1]]);
+            $nextModuleId = ($lastModuleDoc['id'] ?? 0) + 1;
+            
+            $modulesCollection->insertOne([
+                'id' => $nextModuleId,
+                'name' => $newModule,
+                'description' => 'Created from feature edit',
+                'system_name' => $systemName,
+                'system_name_id' => 0, // You might need to look this up
+                'is_active' => true,
+                'created_at' => new MongoDB\BSON\UTCDateTime(),
+                'updated_at' => new MongoDB\BSON\UTCDateTime()
+            ]);
+            
+            // Also update the overall collection for AJAX compatibility
+            $overallCollection->updateMany(
+                [
+                    'system_name' => $systemName,
+                    'module' => $newModule
+                ],
+                ['$set' => [
+                    'module_id' => $nextModuleId,
+                    'updated_at' => new MongoDB\BSON\UTCDateTime()
+                ]],
+                ['upsert' => true]
+            );
+        }
+        
+        // Update all features with the old module to use the new module
+        $overallCollection->updateMany(
+            [
+                'system_name' => $systemName,
+                'module' => $oldModule
+            ],
+            ['$set' => [
+                'module' => $newModule,
+                'updated_at' => new MongoDB\BSON\UTCDateTime()
+            ]]
+        );
+        
+        return true;
+    } catch (Exception $e) {
+        error_log("Module update error: " . $e->getMessage());
+        return false;
+    }
+}
+
+// Add this method to your FeatureController class
+public static function detectOrphanedModules() {
+    try {
+        $db = Database::getInstance()->getDatabase();
+        $overallCollection = $db->getCollection('overall');
+        $modulesCollection = $db->getCollection('modules');
+        
+        // Get all features with modules
+        $features = $overallCollection->find([
+            'module' => ['$ne' => ''],
+            'system_name' => ['$ne' => '']
+        ]);
+        
+        $orphanedModules = [];
+        
+        foreach ($features as $feature) {
+            $systemName = $feature['system_name'] ?? '';
+            $moduleName = $feature['module'] ?? '';
+            
+            if (!empty($systemName) && !empty($moduleName)) {
+                // Check if this module exists for this system
+                $moduleExists = $modulesCollection->findOne([
+                    'name' => $moduleName,
+                    'system_name' => $systemName,
+                    'is_active' => true
+                ]);
+                
+                if (!$moduleExists) {
+                    $orphanedModules[] = [
+                        'feature_id' => (string)$feature['_id'],
+                        'system_name' => $systemName,
+                        'module' => $moduleName,
+                        'description' => $feature['description'] ?? ''
+                    ];
+                }
+            }
+        }
+        
+        return $orphanedModules;
+        
+    } catch (Exception $e) {
+        error_log("Error detecting orphaned modules: " . $e->getMessage());
+        return [];
+    }
+}
+
+// Update the detectMovedModules method in FeatureController.php
+public static function detectMovedModules() {
+    try {
+        $db = Database::getInstance()->getDatabase();
+        $overallCollection = $db->getCollection('overall');
+        $modulesCollection = $db->getCollection('modules');
+        
+        // Get all modules with their current system assignments
+        $modulesCursor = $modulesCollection->find(['is_active' => true]);
+        $moduleSystemMap = [];
+        
+        foreach ($modulesCursor as $module) {
+            if (isset($module['name']) && isset($module['system_name'])) {
+                $moduleSystemMap[$module['name']] = $module['system_name'];
+            }
+        }
+        
+        // Find features with moved modules
+        $movedModules = [];
+        $featuresCursor = $overallCollection->find([
+            'module' => ['$ne' => ''],
+            'system_name' => ['$exists' => true] // Only documents with system_name field
+        ]);
+        
+        foreach ($featuresCursor as $feature) {
+            $moduleName = $feature['module'] ?? '';
+            $currentSystem = $feature['system_name'] ?? '';
+            
+            // Only check if both module name and system name are present
+            if (!empty($moduleName) && !empty($currentSystem) && isset($moduleSystemMap[$moduleName])) {
+                $correctSystem = $moduleSystemMap[$moduleName];
+                
+                // If the system doesn't match, mark as moved
+                if ($currentSystem !== $correctSystem) {
+                    $movedModules[(string)$feature['_id']] = [
+                        'current_system' => $currentSystem,
+                        'correct_system' => $correctSystem,
+                        'module' => $moduleName,
+                        'feature_name' => $feature['feature'] ?? 'Unknown'
+                    ];
+                }
+            }
+        }
+        
+        return $movedModules;
+        
+    } catch (Exception $e) {
+        error_log("Error detecting moved modules: " . $e->getMessage());
+        return [];
+    }
+}
+
+// Add this method to fix features with missing system_name
+public static function fixMissingSystemNames() {
+    try {
+        $db = Database::getInstance()->getDatabase();
+        $overallCollection = $db->getCollection('overall');
+        $modulesCollection = $db->getCollection('modules');
+        
+        // Find features with modules but missing system_name
+        $featuresToFix = $overallCollection->find([
+            'module' => ['$ne' => ''],
+            'system_name' => ['$exists' => false]
+        ]);
+        
+        $fixedCount = 0;
+        
+        foreach ($featuresToFix as $feature) {
+            $moduleName = $feature['module'] ?? '';
+            
+            if (!empty($moduleName)) {
+                // Find the correct system for this module
+                $moduleDoc = $modulesCollection->findOne([
+                    'name' => $moduleName,
+                    'is_active' => true
+                ]);
+                
+                if ($moduleDoc && isset($moduleDoc['system_name'])) {
+                    // Update the feature with the correct system name
+                    $overallCollection->updateOne(
+                        ['_id' => $feature['_id']],
+                        ['$set' => [
+                            'system_name' => $moduleDoc['system_name'],
+                            'updated_at' => new MongoDB\BSON\UTCDateTime()
+                        ]]
+                    );
+                    $fixedCount++;
+                }
+            }
+        }
+        
+        return $fixedCount;
+        
+    } catch (Exception $e) {
+        error_log("Error fixing missing system names: " . $e->getMessage());
+        return 0;
     }
 }
 
@@ -1218,20 +1549,26 @@ public static function deleteFeature($id) {
             throw new Exception('Failed to delete feature');
         }
 
-        // Reference fields
-        $fields = ['system_name', 'module', 'feature', 'client', 'source'];
-        $db = Database::getInstance()->getDatabase();
+        // Reference cleanup based on IDs
+$db = Database::getInstance()->getDatabase();
+$idFields = [
+    'system_name_id' => 'system_names',
+    'module_id' => 'modules', 
+    'feature_id' => 'features',
+    'client_id' => 'clients',
+    'source_id' => 'sources'
+];
 
-        foreach ($fields as $field) {
-            $value = $feature[$field] ?? '';
-            if (empty($value)) continue;
+foreach ($idFields as $idField => $collectionName) {
+    $id = $feature[$idField] ?? null;
+    if (empty($id)) continue;
 
-            $stillUsed = $collection->countDocuments([$field => $value]);
-            if ($stillUsed === 0) {
-                $refCollection = $db->getCollection($field . 's'); // pluralize
-                $refCollection->deleteOne(['name' => $value, 'is_active' => true]);
-            }
-        }
+    $stillUsed = $collection->countDocuments([$idField => $id]);
+    if ($stillUsed === 0) {
+        $refCollection = $db->getCollection($collectionName);
+        $refCollection->deleteOne(['id' => $id, 'is_active' => true]);
+    }
+}
 
         return ['success' => true];
     } catch (Exception $e) {

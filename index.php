@@ -1,3 +1,4 @@
+
 <?php
 /**
  * Main application entry point
@@ -7,6 +8,44 @@
 // Start session and load dependencies
 session_start();
 require_once 'controllers/FeatureController.php';
+use MongoDB\BSON\UTCDateTime;
+use MongoDB\BSON\ObjectId;
+require_once 'config.php';
+
+// Check for module updates from modules.php
+if (isset($_SESSION['modules_updated_count'])) {
+    $updatedCount = $_SESSION['modules_updated_count'];
+    unset($_SESSION['modules_updated_count']);
+    ?>
+    <div class="alert alert-success alert-dismissible fade show">
+        <i class="fas fa-check-circle me-2"></i>
+        <strong>Update Complete:</strong> <?= $updatedCount ?> feature(s) were updated to reflect module changes.
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    <?php
+}
+
+// Also check URL parameter
+if (isset($_GET['from_modules']) && $_GET['from_modules'] === 'updated') {
+    ?>
+    <div class="alert alert-info alert-dismissible fade show">
+        <i class="fas fa-sync-alt me-2"></i>
+        <strong>Updated:</strong> Features have been refreshed to show the latest module changes.
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    <?php
+}
+
+
+if (isset($_SESSION['last_update_time'])) {
+    echo '<script>window.phpLastUpdate = ' . $_SESSION['last_update_time'] . ';</script>';
+}
+
+$successMessage = $_SESSION['success'] ?? null;
+$errors = $_SESSION['errors'] ?? [];
+$old = $_SESSION['old'] ?? [];
+
+unset($_SESSION['success'], $_SESSION['errors'], $_SESSION['old']);
 
 $successMessage = $_SESSION['success'] ?? null;
 $errors = $_SESSION['errors'] ?? [];
@@ -34,10 +73,20 @@ class FlashMessage {
     }
 }
 
+// Show sync notification if applicable
+if (isset($syncResult) && $syncResult['updated'] > 0) {
+    echo '<div class="alert alert-info alert-dismissible fade show mb-3">';
+    echo '<i class="fas fa-sync-alt me-2"></i>';
+    echo $syncResult['message'];
+    echo '<button type="button" class="btn-close" data-bs-dismiss="alert"></button>';
+    echo '</div>';
+}
+
 /**
  * Request handler for POST operations
  */
 function handlePostRequest(): void {
+    
     if (!isset($_POST) || empty($_POST)) {
         return;
     }
@@ -105,6 +154,8 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
     if ($result['success']) {
         $_SESSION['success'] = "Feature added successfully!";
+        // Set timestamp for add operations too
+        $_SESSION['last_update_time'] = time();
     } else {
         $_SESSION['errors'] = $result['errors'];
         $_SESSION['old'] = $_POST;
@@ -116,15 +167,18 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         if (!$result['success']) {
             $_SESSION['errors'] = $result['errors'];
         }
+        // Set timestamp for update operations
+        $_SESSION['last_update_time'] = time();
     } elseif (isset($_POST['delete'])) {
         $result = FeatureController::deleteFeature($_POST['delete_id']);
         $_SESSION['success'] = $result['success'] ? "Feature deleted successfully!" : "Error deleting feature";
+        // Set timestamp for delete operations
+        $_SESSION['last_update_time'] = time();
     }
 
     header("Location: index.php");
     exit();
 }
-
 
 // Get flash messages
 $flash = FlashMessage::get();
@@ -175,6 +229,16 @@ $basePath = getBasePath();
                 <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
             </div>
         <?php endif; ?>
+
+        <?php
+        // Check for orphaned modules (modules that don't match their system)
+$orphanedModules = FeatureController::detectOrphanedModules();
+$orphanedModuleMap = [];
+
+foreach ($orphanedModules as $orphaned) {
+    $orphanedModuleMap[$orphaned['feature_id']] = $orphaned;
+}
+        ?>
 
         <!-- Main Content -->
         <?php include 'views/add_form.php'; ?>
@@ -417,6 +481,66 @@ $(document).ready(function() {
             $(this).removeClass('is-invalid').addClass('is-valid');
         } else {
             $(this).removeClass('is-valid').addClass('is-invalid');
+        }
+    });
+});
+</script>
+
+<script>
+// Handle module updates from edit modal
+$(document).ready(function() {
+    // Check if we need to refresh due to module updates
+    const moduleUpdateData = sessionStorage.getItem('moduleUpdateData');
+    if (moduleUpdateData) {
+        const data = JSON.parse(moduleUpdateData);
+        sessionStorage.removeItem('moduleUpdateData');
+        
+        // Force refresh the cascading dropdown data
+        if (window.CascadingDropdown && window.CascadingDropdown.forceRefreshModuleData) {
+            window.CascadingDropdown.forceRefreshModuleData(
+                data.system_name, 
+                data.old_module, 
+                data.new_module
+            );
+        }
+        
+        // Update the global timestamp
+        window.phpLastUpdate = Date.now() / 1000;
+    }
+    
+    // Store the current state for comparison
+    let currentModuleState = {};
+    $('.edit-module-btn').on('click', function() {
+        const featureId = $(this).data('feature-id');
+        const systemName = $(this).data('system-name');
+        const moduleName = $(this).data('module-name');
+        
+        currentModuleState[featureId] = {
+            system_name: systemName,
+            module: moduleName
+        };
+    });
+    
+    // After modal is hidden, check for changes
+    $('.edit-modal').on('hidden.bs.modal', function() {
+        const featureId = $(this).data('feature-id');
+        const oldState = currentModuleState[featureId];
+        
+        if (oldState) {
+            const newSystemName = $('#edit_system_name_' + featureId).val();
+            const newModuleName = $('#edit_module_' + featureId).val();
+            
+            if (oldState.system_name !== newSystemName || oldState.module !== newModuleName) {
+                // Store the change for refresh
+                sessionStorage.setItem('moduleUpdateData', JSON.stringify({
+                    system_name: newSystemName,
+                    old_module: oldState.module,
+                    new_module: newModuleName
+                }));
+                
+                // Reload the page to refresh data
+                location.reload();
+            }
         }
     });
 });

@@ -1,12 +1,4 @@
 /* ====== Global Font Settings ====== */
-.large-title {
-    font-size: 1.5rem; /* You can adjust the size */
-    font-weight: 200;
-}
-.large-font {
-    font-size: 1.5rem; /* You can adjust the size */
-    font-weight: 200;
-}
 body {
     font-size: 20px;
     font-family: 'Inter', sans-serif;
@@ -15,9 +7,10 @@ body {
 }
 
 h1, h2, h3, h4, h5, h6 {
-    font-size: 20;
+    font-size: 20px;
     font-weight: 600;
     margin-bottom: 0.5rem;
+    font-family: 'Inter', sans-serif;
 }
 
 label,
@@ -29,22 +22,112 @@ select,
     font-size: 1rem;
 }
 
-/* ====== Layout Container ====== */
+/* ====== Layout Elements ====== */
+.divider-line {
+    height: 20px;
+    background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="20"><path fill="%23ffffff" d="M0 0 C50 30 100 0 150 30 C200 60 250 0 300 30 L300 0 Z"></path></svg>') repeat-x;
+    background-size: cover;
+}
+
+.hero {
+    background-color: #037b3d;
+}
+
+.content-box {
+    background-color: #f8f9fa;
+    border-radius: 0.375rem;
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+}
+
+/* ====== Container ====== */
 .container {
-    max-width: 1500px; /* ⬆️ Increased for wider tables */
+    max-width: 1500px;
     margin: 0 auto;
     padding: 10px 5px;
 }
 
-/* ====== Card Layout ====== */
-.card {
-    border: none;
-    border-radius: 12px;
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+/* ====== Navbar Styling ====== */
+.navbar-brand {
+    font-weight: 600 !important;
+    font-size: 1.5rem !important;
 }
 
-.card h4 {
-    font-weight: 600;
+.navbar .nav-link {
+    font-weight: 400 !important;
+    font-size: 1rem !important;
+}
+
+.navbar-nav .nav-link.active {
+    color: #198754 !important;
+    font-weight: 600 !important;
+}
+
+/* ====== Dropdown Styles ====== */
+.navbar .dropdown {
+    position: relative;
+}
+
+.navbar .dropdown-menu {
+    display: none;
+    position: absolute;
+    top: 100%;
+    right: 0;
+    z-index: 1000;
+    min-width: 180px;
+    padding: 8px 0;
+    margin: 2px 0 0;
+    background-color: #fff;
+    border: 1px solid rgba(0,0,0,.15);
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0,0,0,.15);
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-10px);
+    transition: all 0.2s ease-in-out;
+}
+
+.navbar .dropdown-menu.show {
+    display: block;
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+}
+
+.navbar .dropdown-item {
+    display: block;
+    width: 100%;
+    padding: 8px 16px;
+    clear: both;
+    font-weight: 400;
+    color: #212529;
+    text-align: inherit;
+    text-decoration: none;
+    white-space: nowrap;
+    background-color: transparent;
+    border: 0;
+    transition: all 0.15s ease-in-out;
+}
+
+.navbar .dropdown-item:hover,
+.navbar .dropdown-item:focus {
+    color: #198754;
+    background-color: #f8f9fa;
+}
+
+.navbar .dropdown-toggle::after {
+    display: inline-block;
+    margin-left: 0.255em;
+    vertical-align: 0.255em;
+    content: "";
+    border-top: 0.3em solid;
+    border-right: 0.3em solid transparent;
+    border-bottom: 0;
+    border-left: 0.3em solid transparent;
+    transition: transform 0.2s ease-in-out;
+}
+
+.navbar .dropdown.show .dropdown-toggle::after {
+    transform: rotate(180deg);
 }
 
 /* ====== Form Fields ====== */
@@ -195,21 +278,20 @@ form button.btn {
 }
 
 /* ====== Table Styling ====== */
-
 .table-container {
     margin-top: 40px;
     background: white;
     padding: 20px;
     border-radius: 12px;
     box-shadow: 0 2px 12px rgba(0, 0, 0, 0.05);
-    overflow-x: hidden; /* Prevents scroll */
+    overflow-x: hidden;
 }
 
 .table {
     border-collapse: collapse;
     width: 100%;
     font-size: 0.95rem;
-    table-layout: auto; /* Ensures content wraps */
+    table-layout: auto;
     word-wrap: break-word;
 }
 
@@ -232,8 +314,20 @@ form button.btn {
     background-color: #f9f9f9;
 }
 
-.table-striped > tbody > tr:nth-of-type(odd) {
-    background-color: #f9f9f9;
+/* ====== Buttons ====== */
+.btn-success {
+    background-color: #198754;
+    border-color: #198754;
+    color: #fff;
+}
+
+.btn-success:hover {
+    background-color: #157347;
+    border-color: #146c43;
+}
+
+.btn-outline-danger {
+    font-weight: 500;
 }
 
 /* ====== Toast Notification ====== */
@@ -273,29 +367,6 @@ form button.btn {
 
 .modal .select2-dropdown {
     z-index: 10000;
-}
-
-/* ====== Buttons ====== */
-.btn-success {
-    background-color: #198754;
-    border-color: #198754;
-    color: #fff;
-}
-
-.btn-success:hover {
-    background-color: #157347;
-    border-color: #146c43;
-}
-
-.btn-outline-danger {
-    font-weight: 500;
-}
-
-/* ====== Custom Color ====== */
-.bg-mediagreen {
-    background-color: #198754 !important;
-    color: white !important;
-    font-size: 1.25rem; /* Adjust the size as needed */
 }
 
 /* ====== File Thumbnail ====== */

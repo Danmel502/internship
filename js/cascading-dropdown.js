@@ -46,42 +46,78 @@ $(document).ready(function () {
         },
 
         // FIXED: Replace the problematic init() method section
-init() {
-    console.log('🚀 Initializing cascading dropdown system...');
-
-    // Wait for DOM to be ready
-    if (document.readyState !== 'complete') {
-        setTimeout(() => this.init(), 100);
-        return;
-    }
-    
-    // FIXED: Only clear specific event handlers, NOT all handlers
-    this.hierarchy.forEach(selector => {
-        const $element = $(selector);
-        if ($element.length) {
-            // FIXED: Only remove our specific cascading events
-            $element.off('.cascading');
-            
-            if ($element.hasClass('select2-hidden-accessible')) {
-                $element.select2('destroy');
-            }
+        init() {
+             const lastChangedData = sessionStorage.getItem('lastChangedData');
+    if (lastChangedData) {
+        const data = JSON.parse(lastChangedData);
+        sessionStorage.removeItem('lastChangedData');
+        
+        // Refresh dependent dropdowns
+        if (data.system_name) {
+            this.refreshDependentDropdowns('system_name', data.system_name);
         }
-    });
-    
-    setTimeout(() => {
-        this.initializeSelect2();
-        this.restoreOldFormValues();
-        this.setupSelectionTracking();
-        this.initSystemDropdown();
-        this.initModuleDropdown();
-        this.initFeatureDropdown();
-        this.initClientDropdown();
-        this.initSourceDropdown();
-        this.initializeDropdownStates();
-        this.setupFileUploadToggles();
-        console.log('✅ Cascading dropdown system initialized');
-    }, 100);
-},
+        if (data.new_module) {
+            this.refreshDependentDropdowns('module', data.new_module);
+        }
+    }
+            console.log('🚀 Initializing cascading dropdown system...');
+
+            // Check if we need to refresh due to recent updates
+            if (window.phpLastUpdate && (Date.now() - window.phpLastUpdate * 1000) < 30000) {
+                console.log('🔄 Recent update detected, forcing refresh...');
+                this.forceRefreshAllDropdowns();
+            }
+
+            // Wait for DOM to be ready
+            if (document.readyState !== 'complete') {
+                setTimeout(() => this.init(), 100);
+                return;
+            }
+            
+            // FIXED: Only clear specific event handlers, NOT all handlers
+            this.hierarchy.forEach(selector => {
+                const $element = $(selector);
+                if ($element.length) {
+                    // FIXED: Only remove our specific cascading events
+                    $element.off('.cascading');
+                    
+                    if ($element.hasClass('select2-hidden-accessible')) {
+                        $element.select2('destroy');
+                    }
+                }
+            });
+            
+            setTimeout(() => {
+                this.initializeSelect2();
+                this.restoreOldFormValues();
+                this.setupSelectionTracking();
+                this.initSystemDropdown();
+                this.initModuleDropdown();
+                this.initFeatureDropdown();
+                this.initClientDropdown();
+                this.initSourceDropdown();
+                this.initializeDropdownStates();
+                this.setupFileUploadToggles();
+                this.setupRefreshOnOpen();
+                if (window.phpLastUpdate && (Date.now() - window.phpLastUpdate * 1000) < 30000) {
+                    this.forceRefreshAllDropdowns();
+                }
+                console.log('✅ Cascading dropdown system initialized');
+            }, 100);
+        },
+
+        // Add this method to your CascadingDropdown object
+        setupRefreshOnOpen() {
+            this.hierarchy.forEach(selector => {
+                const $element = $(selector);
+                $element.on('select2:open.cascading', () => {
+                    const select2Instance = $element.data('select2');
+                    if (select2Instance && select2Instance.dataAdapter && select2Instance.dataAdapter._cache) {
+                        select2Instance.dataAdapter._cache.clear();
+                    }
+                });
+            });
+        },
 
         // ADDED: Restore old form values for all cascading fields
         restoreOldFormValues() {
@@ -207,74 +243,74 @@ init() {
 
         // FIXED: Enable dropdown with proper helper text update
         enableDropdown(selector) {
-    const $element = $(selector);
-    if (!$element.length) return;
+            const $element = $(selector);
+            if (!$element.length) return;
 
-    console.log(`🔓 Enabling dropdown: ${selector}`);
-    
-    if ($element.hasClass('select2-hidden-accessible')) {
-        // Clear Select2 cache before enabling
-        const select2Instance = $element.data('select2');
-        if (select2Instance && select2Instance.dataAdapter && select2Instance.dataAdapter._cache) {
-            select2Instance.dataAdapter._cache.clear();
-        }
-        
-        $element.prop('disabled', false).select2('enable');
-        const $container = $element.next('.select2-container');
-        $container.removeClass('select2-container--disabled');
-        $container.find('.select2-selection').removeClass('select2-selection--disabled');
-    }
+            console.log(`🔓 Enabling dropdown: ${selector}`);
+            
+            if ($element.hasClass('select2-hidden-accessible')) {
+                // Clear Select2 cache before enabling
+                const select2Instance = $element.data('select2');
+                if (select2Instance && select2Instance.dataAdapter && select2Instance.dataAdapter._cache) {
+                    select2Instance.dataAdapter._cache.clear();
+                }
+                
+                $element.prop('disabled', false).select2('enable');
+                const $container = $element.next('.select2-container');
+                $container.removeClass('select2-container--disabled');
+                $container.find('.select2-selection').removeClass('select2-selection--disabled');
+            }
 
-    $element.removeClass('disabled-dropdown');
-    this.updateDropdownHelperText(selector, false);
-},
+            $element.removeClass('disabled-dropdown');
+            this.updateDropdownHelperText(selector, false);
+        },
 
         // FIXED: Disable dropdown with proper helper text update
-disableDropdown(selector) {
-    const $element = $(selector);
-    if (!$element.length) return;
+        disableDropdown(selector) {
+            const $element = $(selector);
+            if (!$element.length) return;
 
-    console.log(`🔒 Disabling dropdown: ${selector}`);
-    
-    // FIXED: Clear value completely before disabling
-    if ($element.hasClass('select2-hidden-accessible')) {
-        // Store the original placeholder before destroying
-        const originalPlaceholder = $element.attr('placeholder') || $element.data('placeholder') || 'Select an option...';
-        
-        try {
-            $element.select2('destroy');
-        } catch (e) {
-            console.warn('Select2 destroy failed:', e);
-        }
-        $element.val(null);
-        $element.empty();
-        $element.trigger('change.cascading');
+            console.log(`🔒 Disabling dropdown: ${selector}`);
+            
+            // FIXED: Clear value completely before disabling
+            if ($element.hasClass('select2-hidden-accessible')) {
+                // Store the original placeholder before destroying
+                const originalPlaceholder = $element.attr('placeholder') || $element.data('placeholder') || 'Select an option...';
+                
+                try {
+                    $element.select2('destroy');
+                } catch (e) {
+                    console.warn('Select2 destroy failed:', e);
+                }
+                $element.val(null);
+                $element.empty();
+                $element.trigger('change.cascading');
 
-        // Reinitialize Select2 before disabling with preserved placeholder
-        $element.select2({
-            theme: this.config.theme,
-            width: '100%',
-            placeholder: originalPlaceholder, // FIXED: Preserve the placeholder
-            allowClear: false,
-            disabled: true
-        });
-        
-        const $container = $element.next('.select2-container');
-        $container.addClass('select2-container--disabled');
-        $container.find('.select2-selection').addClass('select2-selection--disabled');
-    } else {
-        $element.val('').prop('disabled', true);
-    }
+                // Reinitialize Select2 before disabling with preserved placeholder
+                $element.select2({
+                    theme: this.config.theme,
+                    width: '100%',
+                    placeholder: originalPlaceholder, // FIXED: Preserve the placeholder
+                    allowClear: false,
+                    disabled: true
+                });
+                
+                const $container = $element.next('.select2-container');
+                $container.addClass('select2-container--disabled');
+                $container.find('.select2-selection').addClass('select2-selection--disabled');
+            } else {
+                $element.val('').prop('disabled', true);
+            }
 
-    $element.addClass('disabled-dropdown');
-    
-    // Update selection state
-    const fieldName = selector.replace('#', '');
-    this.selectionState[fieldName] = null;
-    
-    // FIXED: Always update helper text when disabling
-    this.updateDropdownHelperText(selector, true);
-},
+            $element.addClass('disabled-dropdown');
+            
+            // Update selection state
+            const fieldName = selector.replace('#', '');
+            this.selectionState[fieldName] = null;
+            
+            // FIXED: Always update helper text when disabling
+            this.updateDropdownHelperText(selector, true);
+        },
 
         // FIXED: Update helper text to show dependency
         updateDropdownHelperText(selector, isDisabled) {
@@ -324,70 +360,71 @@ disableDropdown(selector) {
             return fieldNames[previousSelector] || 'previous field';
         },
 
-    // FIXED: Track selection state changes with immediate new tag handling
-setupSelectionTracking() {
-    console.log('👀 Setting up selection tracking...');
-    
-    this.hierarchy.forEach(selector => {
-        const $element = $(selector);
-        
-        if (!$element.length) {
-            console.warn(`Element not found: ${selector}`);
-            return;
-        }
+        // FIXED: Track selection state changes with immediate new tag handling
+        setupSelectionTracking() {
+            console.log('👀 Setting up selection tracking...');
+            
+            this.hierarchy.forEach(selector => {
+                const $element = $(selector);
+                
+                if (!$element.length) {
+                    console.warn(`Element not found: ${selector}`);
+                    return;
+                }
 
-        $element.off('select2:select.cascading select2:clear.cascading select2:unselect.cascading change.cascading select2:open.cascading');
-        
-        // Handle tag creation immediately when user types
-        $element.on('select2:select.cascading', (e) => {
-            e.stopImmediatePropagation();
-            const selectedData = e.params.data;
-            const fieldName = selector.replace('#', '');
-            
-            console.log(`📝 ${selector} selected:`, selectedData);
-            
-            // Handle new tags immediately
-            if (selectedData.newTag === true) {
-                console.log(`🆕 Processing new tag immediately: "${selectedData.text}"`);
+                $element.off('select2:select.cascading select2:clear.cascading select2:unselect.cascading change.cascading select2:open.cascading');
                 
-                // Add the option to the select element right away
-                const newOption = new Option(selectedData.text, selectedData.id, true, true);
-                $(newOption).data('newTag', true);
-                $element.append(newOption);
-                
-                // Force the value to be set
-                $element.val(selectedData.id);
-                
-                // Update state immediately
-                this.selectionState[fieldName] = selectedData.id;
-                
-                // Process cascading immediately
-                this.handleProgressiveEnabling(selector, selectedData.id);
-                this.updateDependentDropdowns(selector);
-                
-                // Update validation
-                $element.removeClass('is-invalid').addClass('is-valid');
-                this.updateSelect2Validation($element);
-                
-                console.log(`✅ New tag processed and cascading triggered for: "${selectedData.text}"`);
-                return;
-            }
-            
-            // Handle existing options
-            const newValue = selectedData.id;
-            if (newValue && newValue.trim() !== '') {
-                this.selectionState[fieldName] = newValue;
-                this.handleProgressiveEnabling(selector, newValue);
-                this.updateDependentDropdowns(selector);
-                
-                $element.removeClass('is-invalid').addClass('is-valid');
-                this.updateSelect2Validation($element);
-                
-                console.log(`✅ ${selector} processed successfully: "${newValue}"`);
-            }
-        });
-    });
-},
+                // Handle tag creation immediately when user types
+                $element.on('select2:select.cascading', (e) => {
+                    e.stopImmediatePropagation();
+                    const selectedData = e.params.data;
+                    const fieldName = selector.replace('#', '');
+                    
+                    console.log(`📝 ${selector} selected:`, selectedData);
+                    
+                    // Handle new tags immediately
+                    if (selectedData.newTag === true) {
+                        console.log(`🆕 Processing new tag immediately: "${selectedData.text}"`);
+                        
+                        // Add the option to the select element right away
+                        const newOption = new Option(selectedData.text, selectedData.id, true, true);
+                        $(newOption).data('newTag', true);
+                        $element.append(newOption);
+                        
+                        // Force the value to be set
+                        $element.val(selectedData.id);
+                        
+                        // Update state immediately
+                        this.selectionState[fieldName] = selectedData.id;
+                        
+                        // Process cascading immediately
+                        this.handleProgressiveEnabling(selector, selectedData.id);
+                        this.updateDependentDropdowns(selector);
+                        
+                        // Update validation
+                        $element.removeClass('is-invalid').addClass('is-valid');
+                        this.updateSelect2Validation($element);
+                        
+                        console.log(`✅ New tag processed and cascading triggered for: "${selectedData.text}"`);
+                        return;
+                    }
+                    
+                    // Handle existing options
+                    const newValue = selectedData.id;
+                    if (newValue && newValue.trim() !== '') {
+                        this.selectionState[fieldName] = newValue;
+                        this.handleProgressiveEnabling(selector, newValue);
+                        this.updateDependentDropdowns(selector);
+                        
+                        $element.removeClass('is-invalid').addClass('is-valid');
+                        this.updateSelect2Validation($element);
+                        
+                        console.log(`✅ ${selector} processed successfully: "${newValue}"`);
+                    }
+                });
+            });
+        },
+
         // Update Select2 validation styling
         updateSelect2Validation($select) {
             const $container = $select.next('.select2-container');
@@ -429,44 +466,101 @@ setupSelectionTracking() {
             }
         },
 
-      updateDependentDropdowns(changedDropdown) {
-    const currentIndex = this.hierarchy.indexOf(changedDropdown);
+        updateDependentDropdowns(changedDropdown) {
+            const currentIndex = this.hierarchy.indexOf(changedDropdown);
 
-    // Clear all subsequent dropdowns when a parent changes
-    for (let i = currentIndex + 1; i < this.hierarchy.length; i++) {
-        const dependentSelector = this.hierarchy[i];
-        const $dependent = $(dependentSelector);
-        const fieldName = dependentSelector.replace('#', '');
+            // Clear all subsequent dropdowns when a parent changes
+            for (let i = currentIndex + 1; i < this.hierarchy.length; i++) {
+                const dependentSelector = this.hierarchy[i];
+                const $dependent = $(dependentSelector);
+                const fieldName = dependentSelector.replace('#', '');
 
-        // Clear the selection state
-        this.selectionState[fieldName] = null;
+                // Clear the selection state
+                this.selectionState[fieldName] = null;
 
-        if (!$dependent.prop('disabled')) {
-            console.log(`🗑️ Clearing and refreshing: ${dependentSelector}`);
+                if (!$dependent.prop('disabled')) {
+                    console.log(`🗑️ Clearing and refreshing: ${dependentSelector}`);
 
-            // Clear current value
-            $dependent.val(null).trigger('change');
+                    // Clear current value
+                    $dependent.val(null).trigger('change');
 
-            // Remove validation styling
-            $dependent.removeClass('is-valid is-invalid');
-            this.updateSelect2Validation($dependent);
+                    // Remove validation styling
+                    $dependent.removeClass('is-valid is-invalid');
+                    this.updateSelect2Validation($dependent);
 
-            // Clear cache and force refresh on next open
-            if ($dependent.hasClass('select2-hidden-accessible')) {
-                const select2Instance = $dependent.data('select2');
-                if (select2Instance && select2Instance.dataAdapter) {
-                    // Clear cache
-                    if (select2Instance.dataAdapter._cache) {
-                        select2Instance.dataAdapter._cache.clear();
+                    // Clear cache and force refresh on next open
+                    if ($dependent.hasClass('select2-hidden-accessible')) {
+                        const select2Instance = $dependent.data('select2');
+                        if (select2Instance && select2Instance.dataAdapter) {
+                            // Clear cache
+                            if (select2Instance.dataAdapter._cache) {
+                                select2Instance.dataAdapter._cache.clear();
+                            }
+
+                            // Mark as needing refresh
+                            $dependent.data('needsRefresh', true);
+                        }
                     }
-
-                    // Mark as needing refresh
-                    $dependent.data('needsRefresh', true);
                 }
             }
-        }
-    }
-},
+        },
+
+        // Add this method after updateDependentDropdowns
+        forceRefreshAllDropdowns() {
+            console.log('🔄 Force refreshing all dropdown caches...');
+            
+            this.hierarchy.forEach(selector => {
+                const $element = $(selector);
+                if ($element.length && $element.hasClass('select2-hidden-accessible')) {
+                    const select2Instance = $element.data('select2');
+                    if (select2Instance && select2Instance.dataAdapter && select2Instance.dataAdapter._cache) {
+                        select2Instance.dataAdapter._cache.clear();
+                        console.log(`Cleared cache for ${selector}`);
+                    }
+                }
+            });
+            
+            // Also clear any browser cache for AJAX calls
+            $.ajaxSetup({ cache: false });
+        },
+
+        // Add this method to refresh dropdowns when a specific field changes
+        refreshDependentDropdowns(changedField, newValue) {
+            const fieldIndex = this.hierarchy.indexOf('#' + changedField);
+            
+            if (fieldIndex >= 0) {
+                // Clear all subsequent dropdowns
+                for (let i = fieldIndex + 1; i < this.hierarchy.length; i++) {
+                    const dropdown = this.hierarchy[i];
+                    this.clearDropdown(dropdown);
+                }
+                
+                // If system_name changed, refresh modules
+                if (changedField === 'system_name' && newValue) {
+                    this.refreshDropdownWithFilter('#module');
+                }
+                
+                // If module changed, refresh features
+                if (changedField === 'module' && newValue) {
+                    this.refreshDropdownWithFilter('#feature');
+                }
+            }
+        },
+
+        // Helper method to clear a dropdown
+        clearDropdown(selector) {
+            const $element = $(selector);
+            if ($element.length && $element.hasClass('select2-hidden-accessible')) {
+                $element.val(null).trigger('change');
+                
+                // Clear cache
+                const select2Instance = $element.data('select2');
+                if (select2Instance && select2Instance.dataAdapter && select2Instance.dataAdapter._cache) {
+                    select2Instance.dataAdapter._cache.clear();
+                }
+            }
+        },
+
         createBaseConfig(type, placeholder) {
             return {
                 theme: this.config.theme,
@@ -526,47 +620,45 @@ setupSelectionTracking() {
                             type: 'systems'
                         }),
                         processResults: (data, params) => {
-    const results = this.processApiResults(data);
-    
-    // FIXED: Get search term from params instead of DOM
-    const searchTerm = (params.term || '').trim();
-    if (searchTerm !== '') {
-        const termExists = results.results.some(item => 
-            item.text.toLowerCase() === searchTerm.toLowerCase()
-        );
-        
-        if (!termExists) {
-            results.results.unshift({
-                id: searchTerm,
-                text: searchTerm,
-                newTag: true
-            });
-        }
-    }
-    
-    return results;
-},
+                            const results = this.processApiResults(data);
+                            
+                            // FIXED: Get search term from params instead of DOM
+                            const searchTerm = (params.term || '').trim();
+                            if (searchTerm !== '') {
+                                const termExists = results.results.some(item => 
+                                    item.text.toLowerCase() === searchTerm.toLowerCase()
+                                );
+                                
+                                if (!termExists) {
+                                    results.results.unshift({
+                                        id: searchTerm,
+                                        text: searchTerm,
+                                        newTag: true
+                                    });
+                                }
+                            }
+                            
+                            return results;
+                        },
                         cache: false,
-transport: function(params, success, failure) {
-    // Force fresh requests by adding timestamp and random number
-    if (params.data) {
-        params.data._timestamp = Date.now();
-        params.data._cache_buster = Math.random();
-    }
-    
-    // Clear any existing AJAX cache
-    $.ajaxSetup({ cache: false });
-    
-    return $.ajax({
-        ...params,
-        cache: false,
-        headers: {
-            'Cache-Control': 'no-cache, no-store, must-revalidate',
-            'Pragma': 'no-cache',
-            'Expires': '0'
-        }
-    }).done(success).fail(failure);
-}
+                        transport: function(params, success, failure) {
+                            if (params.data) {
+                                params.data._t = new Date().getTime();
+                                params.data._r = Math.random();
+                            }
+                            
+                            return $.ajax({
+                                url: params.url,
+                                data: params.data,
+                                dataType: params.dataType,
+                                cache: false,
+                                headers: {
+                                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                                    'Pragma': 'no-cache',
+                                    'Expires': '0'
+                                }
+                            }).done(success).fail(failure);
+                        }
                     }
                 };
 
@@ -602,47 +694,45 @@ transport: function(params, success, failure) {
                             return data;
                         },
                         processResults: (data, params) => {
-    const results = this.processApiResults(data);
-    
-    // FIXED: Get search term from params instead of DOM
-    const searchTerm = (params.term || '').trim();
-    if (searchTerm !== '') {
-        const termExists = results.results.some(item => 
-            item.text.toLowerCase() === searchTerm.toLowerCase()
-        );
-        
-        if (!termExists) {
-            results.results.unshift({
-                id: searchTerm,
-                text: searchTerm,
-                newTag: true
-            });
-        }
-    }
-    
-    return results;
-},
+                            const results = this.processApiResults(data);
+                            
+                            // FIXED: Get search term from params instead of DOM
+                            const searchTerm = (params.term || '').trim();
+                            if (searchTerm !== '') {
+                                const termExists = results.results.some(item => 
+                                    item.text.toLowerCase() === searchTerm.toLowerCase()
+                                );
+                                
+                                if (!termExists) {
+                                    results.results.unshift({
+                                        id: searchTerm,
+                                        text: searchTerm,
+                                        newTag: true
+                                    });
+                                }
+                            }
+                            
+                            return results;
+                        },
                         cache: false,
-transport: function(params, success, failure) {
-    // Force fresh requests by adding timestamp and random number
-    if (params.data) {
-        params.data._timestamp = Date.now();
-        params.data._cache_buster = Math.random();
-    }
-    
-    // Clear any existing AJAX cache
-    $.ajaxSetup({ cache: false });
-    
-    return $.ajax({
-        ...params,
-        cache: false,
-        headers: {
-            'Cache-Control': 'no-cache, no-store, must-revalidate',
-            'Pragma': 'no-cache',
-            'Expires': '0'
-        }
-    }).done(success).fail(failure);
-}
+                        transport: function(params, success, failure) {
+                            if (params.data) {
+                                params.data._t = new Date().getTime();
+                                params.data._r = Math.random();
+                            }
+                            
+                            return $.ajax({
+                                url: params.url,
+                                data: params.data,
+                                dataType: params.dataType,
+                                cache: false,
+                                headers: {
+                                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                                    'Pragma': 'no-cache',
+                                    'Expires': '0'
+                                }
+                            }).done(success).fail(failure);
+                        }
                     }
                 };
 
@@ -651,191 +741,191 @@ transport: function(params, success, failure) {
             }, 200);
         },
         
-     initFeatureDropdown() {
-    const $feature = $('#feature');
-    if (!$feature.length) return;
+        initFeatureDropdown() {
+            const $feature = $('#feature');
+            if (!$feature.length) return;
 
-    setTimeout(() => {
-        const isDisabled = !$('#module').val();
-        if ($feature.hasClass('select2-hidden-accessible')) {
-            $feature.select2('destroy');
-        }
+            setTimeout(() => {
+                const isDisabled = !$('#module').val();
+                if ($feature.hasClass('select2-hidden-accessible')) {
+                    $feature.select2('destroy');
+                }
 
-        const config = {
-            ...this.createBaseConfig('feature', 'Select or type a feature name...'),
-            disabled: isDisabled,
-            ajax: {
-                url: this.config.apiUrl,
-                dataType: 'json',
-                delay: this.config.delay,
-                data: (params) => {
-                    const data = {
-                        q: params.term || '',
-                        type: 'features'
-                    };
-                    const systemValue = $('#system_name').val();
-                    const moduleValue = $('#module').val();
-                    if (moduleValue && systemValue) {
-                        data.type = 'features_by_system_module';
-                        data.system_name = systemValue;
-                        data.module = moduleValue;
+                const config = {
+                    ...this.createBaseConfig('feature', 'Select or type a feature name...'),
+                    disabled: isDisabled,
+                    ajax: {
+                        url: this.config.apiUrl,
+                        dataType: 'json',
+                        delay: this.config.delay,
+                        data: (params) => {
+                            const data = {
+                                q: params.term || '',
+                                type: 'features'
+                            };
+                            const systemValue = $('#system_name').val();
+                            const moduleValue = $('#module').val();
+                            if (moduleValue && systemValue) {
+                                data.type = 'features_by_system_module';
+                                data.system_name = systemValue;
+                                data.module = moduleValue;
+                            }
+                            return data;
+                        },
+                        processResults: (data, params) => {
+                            const results = this.processApiResults(data);
+
+                            // Add search term as a new tag if it doesn't exist
+                            const searchTerm = (params.term || '').trim();
+                            if (searchTerm !== '') {
+                                const termExists = results.results.some(item =>
+                                    item.text.toLowerCase() === searchTerm.toLowerCase()
+                                );
+
+                                if (!termExists) {
+                                    results.results.unshift({
+                                        id: searchTerm,
+                                        text: searchTerm,
+                                        newTag: true
+                                    });
+                                }
+                            }
+
+                            return results;
+                        },
+                        cache: false
                     }
-                    return data;
-                },
-                processResults: (data, params) => {
-                    const results = this.processApiResults(data);
+                };
 
-                    // Add search term as a new tag if it doesn't exist
-                    const searchTerm = (params.term || '').trim();
-                    if (searchTerm !== '') {
-                        const termExists = results.results.some(item =>
-                            item.text.toLowerCase() === searchTerm.toLowerCase()
-                        );
-
-                        if (!termExists) {
-                            results.results.unshift({
-                                id: searchTerm,
-                                text: searchTerm,
-                                newTag: true
-                            });
-                        }
-                    }
-
-                    return results;
-                },
-                cache: false
-            }
-        };
-
-        $feature.select2(config);
-    }, 200);
-},
+                $feature.select2(config);
+            }, 200);
+        },
 
         initClientDropdown() {
-    const $client = $('#client');
-    if (!$client.length) return;
+            const $client = $('#client');
+            if (!$client.length) return;
 
-    setTimeout(() => {
-        if ($client.hasClass('select2-hidden-accessible')) {
-            $client.select2('destroy');
-        }
+            setTimeout(() => {
+                if ($client.hasClass('select2-hidden-accessible')) {
+                    $client.select2('destroy');
+                }
 
-        const config = {
-            ...this.createBaseConfig('client', 'Select or type a client name...'),
-            disabled: true, // Initially disabled
-            ajax: {
-                url: this.config.apiUrl,
-                dataType: 'json',
-                delay: this.config.delay,
-                data: (params) => ({
-                    q: params.term || '',
-                    type: 'clients' // Fetch all clients without dependency
-                }),
-                processResults: (data, params) => {
-                    const results = this.processApiResults(data);
+                const config = {
+                    ...this.createBaseConfig('client', 'Select or type a client name...'),
+                    disabled: true, // Initially disabled
+                    ajax: {
+                        url: this.config.apiUrl,
+                        dataType: 'json',
+                        delay: this.config.delay,
+                        data: (params) => ({
+                            q: params.term || '',
+                            type: 'clients' // Fetch all clients without dependency
+                        }),
+                        processResults: (data, params) => {
+                            const results = this.processApiResults(data);
 
-                    // Add search term as a new tag if it doesn't exist
-                    const searchTerm = (params.term || '').trim();
-                    if (searchTerm !== '') {
-                        const termExists = results.results.some(item =>
-                            item.text.toLowerCase() === searchTerm.toLowerCase()
-                        );
+                            // Add search term as a new tag if it doesn't exist
+                            const searchTerm = (params.term || '').trim();
+                            if (searchTerm !== '') {
+                                const termExists = results.results.some(item =>
+                                    item.text.toLowerCase() === searchTerm.toLowerCase()
+                                );
 
-                        if (!termExists) {
-                            results.results.unshift({
-                                id: searchTerm,
-                                text: searchTerm,
-                                newTag: true
-                            });
-                        }
+                                if (!termExists) {
+                                    results.results.unshift({
+                                        id: searchTerm,
+                                        text: searchTerm,
+                                        newTag: true
+                                    });
+                                }
+                            }
+
+                            return results;
+                        },
+                        cache: false
                     }
+                };
 
-                    return results;
-                },
-                cache: false
-            }
-        };
+                $client.select2(config);
 
-        $client.select2(config);
+                // Enable the dropdown when the user interacts with it
+                $client.on('select2:open', () => {
+                    $client.prop('disabled', false).select2('enable');
+                });
+            }, 200);
+        },
 
-        // Enable the dropdown when the user interacts with it
-        $client.on('select2:open', () => {
-            $client.prop('disabled', false).select2('enable');
-        });
-    }, 200);
-},
+        initSourceDropdown() {
+            const $source = $('#source');
+            if (!$source.length) return;
 
-       initSourceDropdown() {
-    const $source = $('#source');
-    if (!$source.length) return;
+            setTimeout(() => {
+                if ($source.hasClass('select2-hidden-accessible')) {
+                    $source.select2('destroy');
+                }
 
-    setTimeout(() => {
-        if ($source.hasClass('select2-hidden-accessible')) {
-            $source.select2('destroy');
-        }
+                const config = {
+                    ...this.createBaseConfig('source', 'Select or type a source name...'),
+                    disabled: true, // Initially disabled
+                    ajax: {
+                        url: this.config.apiUrl,
+                        dataType: 'json',
+                        delay: this.config.delay,
+                        data: (params) => ({
+                            q: params.term || '',
+                            type: 'sources' // Fetch all sources without dependency
+                        }),
+                        processResults: (data, params) => {
+                            const results = this.processApiResults(data);
 
-        const config = {
-            ...this.createBaseConfig('source', 'Select or type a source name...'),
-            disabled: true, // Initially disabled
-            ajax: {
-                url: this.config.apiUrl,
-                dataType: 'json',
-                delay: this.config.delay,
-                data: (params) => ({
-                    q: params.term || '',
-                    type: 'sources' // Fetch all sources without dependency
-                }),
-                processResults: (data, params) => {
-                    const results = this.processApiResults(data);
+                            // Add search term as a new tag if it doesn't exist
+                            const searchTerm = (params.term || '').trim();
+                            if (searchTerm !== '') {
+                                const termExists = results.results.some(item =>
+                                    item.text.toLowerCase() === searchTerm.toLowerCase()
+                                );
 
-                    // Add search term as a new tag if it doesn't exist
-                    const searchTerm = (params.term || '').trim();
-                    if (searchTerm !== '') {
-                        const termExists = results.results.some(item =>
-                            item.text.toLowerCase() === searchTerm.toLowerCase()
-                        );
+                                if (!termExists) {
+                                    results.results.unshift({
+                                        id: searchTerm,
+                                        text: searchTerm,
+                                        newTag: true
+                                    });
+                                }
+                            }
 
-                        if (!termExists) {
-                            results.results.unshift({
-                                id: searchTerm,
-                                text: searchTerm,
-                                newTag: true
-                            });
-                        }
+                            return results;
+                        },
+                        cache: false
                     }
+                };
 
-                    return results;
-                },
-                cache: false
-            }
-        };
+                $source.select2(config);
 
-        $source.select2(config);
-
-        // Enable the dropdown when the user interacts with it
-        $source.on('select2:open', () => {
-            $source.prop('disabled', false).select2('enable');
-        });
-    }, 200);
-},
+                // Enable the dropdown when the user interacts with it
+                $source.on('select2:open', () => {
+                    $source.prop('disabled', false).select2('enable');
+                });
+            }, 200);
+        },
 
         setupFileUploadToggles() {
-    console.log('🔧 Setting up file upload toggles...');
-    
-    $('#uploadToggle').off('click.cascading').on('click.cascading', function () {
-        $(this).addClass('active btn-success text-white').removeClass('btn-outline-success text-success');
-        $('#urlToggle').removeClass('active btn-success text-white').addClass('btn-outline-success text-success');
-        $('#sample_file').removeClass('d-none').prop('disabled', false);
-        $('#file_url').addClass('d-none').prop('disabled', true).val('').removeClass('is-valid is-invalid');
-    });
+            console.log('🔧 Setting up file upload toggles...');
+            
+            $('#uploadToggle').off('click.cascading').on('click.cascading', function () {
+                $(this).addClass('active btn-success text-white').removeClass('btn-outline-success text-success');
+                $('#urlToggle').removeClass('active btn-success text-white').addClass('btn-outline-success text-success');
+                $('#sample_file').removeClass('d-none').prop('disabled', false);
+                $('#file_url').addClass('d-none').prop('disabled', true).val('').removeClass('is-valid is-invalid');
+            });
 
-    $('#urlToggle').off('click.cascading').on('click.cascading', function () {
-        $(this).addClass('active btn-success text-white').removeClass('btn-outline-success text-success');
-        $('#uploadToggle').removeClass('active btn-success text-white').addClass('btn-outline-success text-success');
-        $('#sample_file').addClass('d-none').prop('disabled', true).val('').removeClass('is-valid is-invalid');
-        $('#file_url').removeClass('d-none').prop('disabled', false);
-    });
-},
+            $('#urlToggle').off('click.cascading').on('click.cascading', function () {
+                $(this).addClass('active btn-success text-white').removeClass('btn-outline-success text-success');
+                $('#uploadToggle').removeClass('active btn-success text-white').addClass('btn-outline-success text-success');
+                $('#sample_file').addClass('d-none').prop('disabled', true).val('').removeClass('is-valid is-invalid');
+                $('#file_url').removeClass('d-none').prop('disabled', false);
+            });
+        },
 
         // === UTILS ===
         processApiResults(data) {
@@ -862,21 +952,21 @@ transport: function(params, success, failure) {
             }, 100);
         },
 
-       refreshDropdownWithFilter(selector) {
-    const $element = $(selector);
-    if (!$element.length || !$element.hasClass('select2-hidden-accessible') || $element.prop('disabled')) return;
+        refreshDropdownWithFilter(selector) {
+            const $element = $(selector);
+            if (!$element.length || !$element.hasClass('select2-hidden-accessible') || $element.prop('disabled')) return;
 
-    // FIXED: Don't destroy - just clear the cache
-    const select2Instance = $element.data('select2');
-    if (select2Instance && select2Instance.dataAdapter) {
-        // Clear the cache but keep the instance alive
-        if (select2Instance.dataAdapter._cache) {
-            select2Instance.dataAdapter._cache.clear();
-        }
-        
-        console.log(`🔄 Cleared cache for ${selector} without destroying instance`);
-    }
-},
+            // FIXED: Don't destroy - just clear the cache
+            const select2Instance = $element.data('select2');
+            if (select2Instance && select2Instance.dataAdapter) {
+                // Clear the cache but keep the instance alive
+                if (select2Instance.dataAdapter._cache) {
+                    select2Instance.dataAdapter._cache.clear();
+                }
+                
+                console.log(`🔄 Cleared cache for ${selector} without destroying instance`);
+            }
+        },
 
         showToast(message, type = 'info') {
             if (window.showToast) {
@@ -1055,7 +1145,33 @@ transport: function(params, success, failure) {
                 }
             });
             console.log('🧹 All validation styling cleared');
+        },
+
+     // Add this to your CascadingDropdown object
+forceRefreshModuleData: function(systemName, oldModule, newModule) {
+    console.log('🔄 Force refreshing module data:', systemName, oldModule, newModule);
+    
+    // Clear caches for all dropdowns
+    this.hierarchy.forEach(selector => {
+        this.clearDropdownCache(selector);
+    });
+    
+    // Force refresh the page data timestamp
+    if (window.phpLastUpdate) {
+        window.phpLastUpdate = Date.now() / 1000;
+    }
+},
+
+clearDropdownCache: function(selector) {
+    const $element = $(selector);
+    if ($element.length && $element.hasClass('select2-hidden-accessible')) {
+        const select2Instance = $element.data('select2');
+        if (select2Instance && select2Instance.dataAdapter && select2Instance.dataAdapter._cache) {
+            select2Instance.dataAdapter._cache.clear();
+            console.log(`Cleared cache for ${selector}`);
         }
+    }
+}
     };
 
     // Add custom CSS for disabled dropdowns
@@ -1092,4 +1208,6 @@ transport: function(params, success, failure) {
     
     // Expose CascadingDropdown for potential external access
     window.CascadingDropdown = CascadingDropdown;
+
+    
 });

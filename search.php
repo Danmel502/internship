@@ -1,21 +1,31 @@
 <?php
+// Prevent any output before JSON
+ob_start();
+
 require_once 'config.php';
 require_once 'controllers/FeatureController.php';
-header('Content-Type: application/json');
 
-use MongoDB\BSON\Regex;
-use MongoDB\BSON\UTCDateTime;
+// Clean any previous output
+ob_clean();
+
+// Set headers first
+header('Content-Type: application/json');
+header('Cache-Control: no-cache, must-revalidate');
 
 // Set error reporting to log errors instead of displaying them
 ini_set('display_errors', 0);
 ini_set('log_errors', 1);
+error_reporting(E_ALL);
+
+use MongoDB\BSON\Regex;
+use MongoDB\BSON\UTCDateTime;
 
 // Get search query from GET parameter
 $search = isset($_GET['q']) ? trim($_GET['q']) : '';
 
 // Return empty array if query is empty
 if ($search === '') {
-    echo json_encode([]);
+    echo json_encode(['data' => []]);
     exit;
 }
 
@@ -45,7 +55,7 @@ try {
         throw new Exception('Database connection not available');
     }
     
-    // Use the enhanced search from FeatureController instead of duplicating logic
+    // Use the enhanced search from FeatureController
     $results = FeatureController::searchFeatures($search, 100, 0);
     
     // Check if results is null or false
@@ -53,7 +63,7 @@ try {
         throw new Exception('Failed to retrieve search results');
     }
     
-    // Format results for API response
+    // Format results for the main.js SearchManager
     $formattedResults = [];
     
     foreach ($results as $doc) {
@@ -92,7 +102,7 @@ try {
         }
     }
     
-    // Return results with metadata
+    // Return results in the format main.js expects
     echo json_encode([
         'success' => true,
         'data' => $formattedResults,
@@ -129,4 +139,7 @@ try {
         'retry' => true
     ]);
 }
+
+// End output buffering
+ob_end_flush();
 ?>

@@ -1,6 +1,6 @@
 <?php
 // get_edit_modal.php
-require_once 'config/database.php';
+require_once 'config.php';
 require_once 'controllers/FeatureController.php';
 
 header('Content-Type: text/html; charset=utf-8');
