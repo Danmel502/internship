@@ -194,7 +194,8 @@ $current_page = 'settings';
     <!-- Navbar -->
     <nav class="navbar navbar-expand-lg bg-white border-bottom sticky-top shadow-sm">
         <div class="container">
-            <a class="navbar-brand text-success" href="<?php echo $basePath; ?>/index.php">Media <span class="text-dark">Track</span></a>
+          <a class="navbar-brand text-success" href="../index.php">Media <span class="text-dark">Track</span></a>
+
             <button class="navbar-toggler" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
             </button>

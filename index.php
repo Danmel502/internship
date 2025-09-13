@@ -256,9 +256,7 @@ foreach ($orphanedModules as $orphaned) {
     </div>
 
     <!-- Modals (only show when not searching) -->
-    <?php if (empty($search)): ?>
-        <?php include 'views/modals.php'; ?>
-    <?php endif; ?>
+   <?php include 'views/edit_modal.php'; ?>
 
     <!-- JavaScript Dependencies -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>

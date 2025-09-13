@@ -131,6 +131,24 @@ register_shutdown_function($cleanupSession);
     <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet">
     
     <style>
+/* Fixed Select2 dropdown hover colors */
+.select2-container--bootstrap-5 .select2-results__option {
+    transition: all 0.2s ease;
+}
+
+/* Selected items - green background */
+.select2-container--bootstrap-5 .select2-results__option--selected {
+    background-color: #198754 !important;
+    color: white !important;
+    font-weight: 500;
+}
+
+/* Gray hover for ALL items (including selected) */
+.select2-container--bootstrap-5 .select2-results__option--highlighted {
+    background-color: #6c757d !important;
+    color: white !important;
+    transform: translateX(2px);
+}
 
         /* Prevent Bootstrap from interfering with our custom closing */
 #featureFormCollapse.custom-closing {
@@ -1272,9 +1290,8 @@ $('#featureFormCollapse').on('hidden.bs.collapse', function () {
 </script>
 
 <script>
-// Enhanced Select2 initialization with smooth animations
+// Enhanced Select2 initialization with proper hover handling
 $(document).ready(function() {
-    // Initialize Select2 with enhanced options
     $('select').each(function() {
         $(this).select2({
             theme: 'bootstrap-5',
@@ -1297,46 +1314,7 @@ $(document).ready(function() {
             templateSelection: function(data) {
                 return $('<span class="selected-text">' + data.text + '</span>');
             }
-        });
-        
-        // Add custom event handlers for smooth interactions
-        $(this).on('select2:open', function(e) {
-            // Add animation class when dropdown opens
-            $('.select2-dropdown').addClass('dropdown-open');
-            
-            // Focus on search field if it exists
-            setTimeout(function() {
-                $('.select2-search__field').focus();
-            }, 100);
-        });
-        
-        $(this).on('select2:close', function(e) {
-            // Remove animation class when dropdown closes
-            $('.select2-dropdown').removeClass('dropdown-open');
-        });
-        
-        // Add hover effects
-        $(this).on('mouseenter', function() {
-            $(this).next('.select2-container').find('.select2-selection')
-                .css('border-color', '#198754');
-        }).on('mouseleave', function() {
-            if (!$(this).next('.select2-container').find('.select2-selection').hasClass('select2-container--focus')) {
-                $(this).next('.select2-container').find('.select2-selection')
-                    .css('border-color', '#dee2e6');
-            }
-        });
-    });
-    
-    // Enhanced keyboard navigation
-    $(document).on('keydown', '.select2-search__field', function(e) {
-        if (e.keyCode === 38 || e.keyCode === 40) { // Up/Down arrows
-            e.stopPropagation(); // Prevent Select2 from handling these keys
-        }
-    });
-    
-    // Add smooth transition to dropdown items
-    $(document).on('mouseenter', '.select2-results__option', function() {
-        $(this).css('transition', 'all 0.2s ease');
+        })
     });
 });
 </script>

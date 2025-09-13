@@ -87,14 +87,17 @@ try {
     $_SESSION['error'] = "❌ An unexpected error occurred while deleting the feature.";
 }
 
-// ADDED: Function to update module system relationships
+// ENHANCED: Function to update all entity relationships after deletion
 function updateModuleSystemRelationships() {
     try {
         $db = Database::getInstance()->getDatabase();
         $modulesCollection = $db->getCollection('modules');
+        $systemNamesCollection = $db->getCollection('system_names');
+        $clientsCollection = $db->getCollection('clients');
+        $sourcesCollection = $db->getCollection('sources');
         $overallCollection = $db->getCollection('overall');
         
-        // Get all modules
+        // 1. Handle Module relationships
         $modulesCursor = $modulesCollection->find([]);
         
         foreach ($modulesCursor as $module) {
@@ -108,70 +111,147 @@ function updateModuleSystemRelationships() {
             $dependencyCount = $overallCollection->countDocuments(['module_id' => $moduleId]);
             
             if ($dependencyCount === 0) {
-                // No more dependencies - check if we need to clear system relationship
-                // Only clear if the module was previously linked to a system
+                // No more dependencies - clear system relationship (make independent)
                 if (!empty($currentSystemName) && $currentSystemName !== 'Unknown System') {
-                    
-                    // Option 1: Clear system relationship completely (makes module independent)
                     $modulesCollection->updateOne(
                         ['id' => $moduleId],
                         ['$set' => [
-                            'system_name' => '',
+                            'system_name' => 'Independent Module',
                             'system_name_id' => null,
                             'updated_at' => new MongoDB\BSON\UTCDateTime()
                         ]]
                     );
                     
-                    error_log("Cleared system relationship for module '{$moduleName}' (ID: {$moduleId}) - no more dependencies");
-                    
-                    // Option 2: Alternative approach - mark as "No Current System" instead of clearing
-                    // Uncomment this if you prefer to show "No Current System" instead of empty
-                    /*
-                    $modulesCollection->updateOne(
-                        ['id' => $moduleId],
-                        ['$set' => [
-                            'system_name' => 'No Current System',
-                            'system_name_id' => 0,
-                            'updated_at' => new MongoDB\BSON\UTCDateTime()
-                        ]]
-                    );
-                    */
+                    error_log("Made module '{$moduleName}' independent - no more dependencies");
                 }
-            } else {
-                // Still has dependencies - ensure system relationship is maintained
-                // Get the current system from existing features
-                $currentFeature = $overallCollection->findOne(['module_id' => $moduleId]);
+            }
+        }
+        
+        // 2. Handle System Name relationships
+        $systemNamesCursor = $systemNamesCollection->find([]);
+        
+        foreach ($systemNamesCursor as $systemName) {
+            if (!isset($systemName['id'])) continue;
+            
+            $systemNameId = $systemName['id'];
+            $systemNameValue = $systemName['name'] ?? '';
+            
+            // Check if this system name still has dependencies in overall collection
+            $systemDependencyCount = $overallCollection->countDocuments([
+                'system_name' => $systemNameValue
+            ]);
+            
+            // Also check if it has modules assigned to it
+            $moduleDependencyCount = $modulesCollection->countDocuments([
+                'system_name_id' => $systemNameId,
+                'is_active' => true
+            ]);
+            
+            // If no dependencies in either overall or modules collections
+            if ($systemDependencyCount === 0 && $moduleDependencyCount === 0) {
+                // Mark system name as having no current dependencies
+                $systemNamesCollection->updateOne(
+                    ['id' => $systemNameId],
+                    ['$set' => [
+                        'has_dependencies' => false,
+                        'updated_at' => new MongoDB\BSON\UTCDateTime()
+                    ]]
+                );
                 
-                if ($currentFeature && isset($currentFeature['system_name'])) {
-                    $actualSystemName = $currentFeature['system_name'];
-                    
-                    // Update module if system name doesn't match
-                    if ($currentSystemName !== $actualSystemName) {
-                        // Find system_name_id from system_names collection
-                        $systemNamesCollection = $db->getCollection('system_names');
-                        $systemDoc = $systemNamesCollection->findOne(['name' => $actualSystemName]);
-                        $systemNameId = $systemDoc ? $systemDoc['id'] : 0;
-                        
-                        $modulesCollection->updateOne(
-                            ['id' => $moduleId],
-                            ['$set' => [
-                                'system_name' => $actualSystemName,
-                                'system_name_id' => $systemNameId,
-                                'updated_at' => new MongoDB\BSON\UTCDateTime()
-                            ]]
-                        );
-                        
-                        error_log("Updated system relationship for module '{$moduleName}' (ID: {$moduleId}) to '{$actualSystemName}'");
-                    }
-                }
+                error_log("System name '{$systemNameValue}' marked as having no dependencies");
+            } else {
+                // Ensure it's marked as having dependencies
+                $systemNamesCollection->updateOne(
+                    ['id' => $systemNameId],
+                    ['$set' => [
+                        'has_dependencies' => true,
+                        'updated_at' => new MongoDB\BSON\UTCDateTime()
+                    ]]
+                );
+            }
+        }
+        
+        // 3. Handle Client relationships
+        $clientsCursor = $clientsCollection->find([]);
+        
+        foreach ($clientsCursor as $client) {
+            if (!isset($client['id'])) continue;
+            
+            $clientId = $client['id'];
+            $clientName = $client['name'] ?? '';
+            
+            // Check if this client still has dependencies in overall collection
+            $clientDependencyCount = $overallCollection->countDocuments([
+                'client' => $clientName
+            ]);
+            
+            if ($clientDependencyCount === 0) {
+                // Mark client as having no current dependencies
+                $clientsCollection->updateOne(
+                    ['id' => $clientId],
+                    ['$set' => [
+                        'has_dependencies' => false,
+                        'updated_at' => new MongoDB\BSON\UTCDateTime()
+                    ]]
+                );
+                
+                error_log("Client '{$clientName}' marked as having no dependencies");
+            } else {
+                // Ensure it's marked as having dependencies
+                $clientsCollection->updateOne(
+                    ['id' => $clientId],
+                    ['$set' => [
+                        'has_dependencies' => true,
+                        'updated_at' => new MongoDB\BSON\UTCDateTime()
+                    ]]
+                );
+            }
+        }
+        
+        // 4. Handle Source relationships
+        $sourcesCursor = $sourcesCollection->find([]);
+        
+        foreach ($sourcesCursor as $source) {
+            if (!isset($source['id'])) continue;
+            
+            $sourceId = $source['id'];
+            $sourceName = $source['name'] ?? '';
+            
+            // Check if this source still has dependencies in overall collection
+            $sourceDependencyCount = $overallCollection->countDocuments([
+                'source' => $sourceName
+            ]);
+            
+            if ($sourceDependencyCount === 0) {
+                // Mark source as having no current dependencies
+                $sourcesCollection->updateOne(
+                    ['id' => $sourceId],
+                    ['$set' => [
+                        'has_dependencies' => false,
+                        'updated_at' => new MongoDB\BSON\UTCDateTime()
+                    ]]
+                );
+                
+                error_log("Source '{$sourceName}' marked as having no dependencies");
+            } else {
+                // Ensure it's marked as having dependencies
+                $sourcesCollection->updateOne(
+                    ['id' => $sourceId],
+                    ['$set' => [
+                        'has_dependencies' => true,
+                        'updated_at' => new MongoDB\BSON\UTCDateTime()
+                    ]]
+                );
             }
         }
         
         // Clear any cached data
         $_SESSION['last_data_update'] = time();
         
+        error_log("Completed relationship updates for all entities after feature deletion");
+        
     } catch (Exception $e) {
-        error_log("Error updating module system relationships: " . $e->getMessage());
+        error_log("Error updating entity relationships: " . $e->getMessage());
     }
 }
 

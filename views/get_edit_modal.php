@@ -34,7 +34,7 @@ try {
     $controllerLoaded = true;
     
     // Include the edit modal template
-    include 'views/modals/edit_modal.php';
+    include 'views/edit_modal.php';
     
 } catch (Exception $e) {
     http_response_code(500);

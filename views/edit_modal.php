@@ -455,14 +455,21 @@ if (isset($_SESSION['flash_message'])) {
 
                             <!-- Toggle Button Group - Improved styling -->
                             <div class="btn-group w-100 mb-3 shadow-sm" role="group">
-                                <button type="button" id="uploadToggle_<?= htmlspecialchars((string)$feature['_id']) ?>" 
-                                        class="btn btn-success text-white me-0 active rounded-start">
-                                    <i class="fas fa-upload me-1"></i> Upload File
-                                </button>
-                                <button type="button" id="urlToggle_<?= htmlspecialchars((string)$feature['_id']) ?>" 
-                                        class="btn btn-outline-success text-success rounded-end">
-                                    <i class="fas fa-link me-1"></i> Add URL
-                                </button>
+                                <div class="btn-group" role="group" aria-label="Upload or URL Toggle">
+    <button type="button" 
+        id="uploadToggle_<?= htmlspecialchars((string)$feature['_id']) ?>" 
+        class="btn btn-success text-white active">
+        <i class="fas fa-upload me-1"></i> Upload File
+    </button>
+
+    <button type="button" 
+        id="urlToggle_<?= htmlspecialchars((string)$feature['_id']) ?>" 
+        class="btn btn-outline-success">
+        <i class="fas fa-link me-1"></i> Add URL
+    </button>
+</div>
+
+
                             </div>
 
                             <!-- Current file display -->
@@ -530,6 +537,54 @@ if (isset($_SESSION['flash_message'])) {
 </div>
 
 <style>
+    /* Fix toggle button styling */
+.btn-group .btn-success.text-white {
+    background-color: #198754 !important;
+    border-color: #198754 !important;
+    color: white !important;
+}
+
+.btn-group .btn-outline-success {
+    background-color: transparent !important;
+    border-color: #198754 !important;
+    color: #198754 !important;
+}
+
+.btn-group .btn-outline-success:hover {
+    background-color: #198754 !important;
+    color: white !important;
+}
+
+
+/* Fix Select2 dropdown hover colors - same as edit modal */
+.select2-container--bootstrap-5 .select2-results__option--selected {
+    background-color: #198754 !important;
+    color: white !important;
+}
+
+.select2-container--bootstrap-5 .select2-results__option--highlighted {
+    background-color: #6c757d !important; /* Gray instead of green */
+    color: white !important;
+}
+
+.select2-container--bootstrap-5 .select2-results__option--selected.select2-results__option--highlighted {
+    background-color: #198754 !important; /* Keep green even when hovered */
+    color: white !important;
+}
+
+/* Hover effects for dropdown items */
+.select2-container--bootstrap-5 .select2-results__option:hover {
+    background-color: #f8f9fa;
+    transform: translateX(2px);
+}
+    /* Fix Add URL active state */
+#urlToggle_[id].active,
+#urlToggle_[id]:active {
+    background-color: #198754 !important; /* Bootstrap success green */
+    color: #fff !important; /* White text */
+    border-color: #198754 !important;
+}
+
 /* Additional custom styles for a cleaner look */
 .modal-content {
     border: none;
@@ -595,6 +650,28 @@ if (isset($_SESSION['flash_message'])) {
 </style>
 
 <script>
+    document.querySelectorAll('[id^="uploadToggle_"]').forEach(btn => {
+    btn.addEventListener('click', function() {
+        this.classList.add('btn-success', 'text-white');
+        this.classList.remove('btn-outline-success');
+
+        let urlBtn = document.getElementById(this.id.replace('uploadToggle_', 'urlToggle_'));
+        urlBtn.classList.add('btn-outline-success');
+        urlBtn.classList.remove('btn-success', 'text-white');
+    });
+});
+
+document.querySelectorAll('[id^="urlToggle_"]').forEach(btn => {
+    btn.addEventListener('click', function() {
+        this.classList.add('btn-success', 'text-white');
+        this.classList.remove('btn-outline-success');
+
+        let uploadBtn = document.getElementById(this.id.replace('urlToggle_', 'uploadToggle_'));
+        uploadBtn.classList.add('btn-outline-success');
+        uploadBtn.classList.remove('btn-success', 'text-white');
+    });
+});
+
 // Initialize Select2 for edit modals when they are shown
 $(document).on('shown.bs.modal', '[id^="editModal"]', function () {
     const modalId = $(this).attr('id');

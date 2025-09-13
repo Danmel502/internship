@@ -65,22 +65,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             'updated_at' => new MongoDB\BSON\UTCDateTime()
                         ]);
                         
-                        // IMPORTANT: Also insert into overall collection for AJAX compatibility
-// This ensures the module appears in cascading dropdowns
-$overallCollection->insertOne([
-    'system_name' => $systemName['name'],
-    'module' => $name,
-    'module_id' => $nextId, // ADD THIS LINE - Critical for proper linking
-    'feature' => '', // Empty for now
-    'client' => '', // Empty for now
-    'source' => '', // Empty for now
-    'module_description' => $description, // Use separate field for module descriptions
-'description' => '', // Keep this empty - it's for feature descriptions
-    'created_from' => 'modules_management',
-    'created_at' => new MongoDB\BSON\UTCDateTime(),
-    'is_active' => (bool)$isActive
-]);
-                        
                         $message = 'Module added successfully and will appear in dropdowns';
                         $messageType = 'success';
                     }
@@ -625,6 +609,12 @@ $current_page = 'settings';
     border: 1px solid #ffeaa7;
     font-size: 0.75rem;
 }
+
+.independent-module {
+    background-color: #fff3cd;
+    color: #856404;
+    border: 1px solid #ffeaa7;
+}
         .form-check-input:checked {
             background-color: #198754 !important;
             border-color: #198754 !important;
@@ -674,7 +664,8 @@ $current_page = 'settings';
     <!-- Navbar -->
     <nav class="navbar navbar-expand-lg bg-white border-bottom sticky-top shadow-sm">
         <div class="container">
-            <a class="navbar-brand text-success" href="<?php echo $basePath; ?>/index.php">Media <span class="text-dark">Track</span></a>
+           <a class="navbar-brand text-success" href="../index.php">Media <span class="text-dark">Track</span></a>
+
             <button class="navbar-toggler" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
             </button>
@@ -873,15 +864,19 @@ if (isset($_GET['updated_count']) && is_numeric($_GET['updated_count'])) {
     class="badge bg-success text-white border-0"
     style="cursor: pointer;"
     onclick="showSystemNames('<?php echo htmlspecialchars($module['name'], ENT_QUOTES); ?>', <?php echo htmlspecialchars(json_encode($module['all_system_names']), ENT_QUOTES); ?>)">
-    <i class="fas fa-list me-1"></i>
     Check System Names (<?php echo count($module['all_system_names']); ?>)
 </button>
     <?php else: ?>
-        <span class="badge <?php echo $module['system_name'] === 'Unknown System' ? 'unknown-system' : 'system-name-badge'; ?>">
+        <?php 
+        $badgeClass = 'system-name-badge';
+        if ($module['system_name'] === 'Unknown System') {
+            $badgeClass = 'unknown-system';
+        } elseif ($module['system_name'] === 'Independent Module') {
+            $badgeClass = 'independent-module';
+        }
+        ?>
+        <span class="badge <?php echo $badgeClass; ?>">
             <?php echo htmlspecialchars($module['system_name']); ?>
-            <?php if ($module['system_name'] === 'Unknown System'): ?>
-                <i class="fas fa-exclamation-triangle ms-1"></i>
-            <?php endif; ?>
         </span>
     <?php endif; ?>
 </td>
@@ -921,15 +916,23 @@ if (isset($_GET['updated_count']) && is_numeric($_GET['updated_count'])) {
                                             </div>
                                         </td>
                                         <td>
-    <button type="button" class="btn btn-sm <?php echo $module['system_name_id'] > 0 ? 'btn-outline-success' : 'btn-outline-warning'; ?>" 
-            onclick="editModule(<?php echo $module['id']; ?>, '<?php echo htmlspecialchars($module['name'], ENT_QUOTES); ?>', '<?php echo htmlspecialchars($module['description'], ENT_QUOTES); ?>', <?php echo $module['system_name_id'] ?: 0; ?>, <?php echo $module['is_active'] ? 'true' : 'false'; ?>, <?php echo $module['has_dependencies'] ? 'true' : 'false'; ?>)">
-        <i class="fas fa-edit me-1"></i>
-        <?php if ($module['system_name_id'] > 0): ?>
-            Edit
-        <?php else: ?>
-            Populate & Edit
-        <?php endif; ?>
-    </button>
+    <?php if ($module['has_multiple_systems']): ?>
+        <button type="button" class="btn btn-sm btn-outline-warning" 
+                onclick="showMultiSystemEditWarning('<?php echo htmlspecialchars($module['name'], ENT_QUOTES); ?>', <?php echo htmlspecialchars(json_encode($module['all_system_names']), ENT_QUOTES); ?>)">
+            <i class="fas fa-exclamation-triangle me-1"></i>
+            Multi-System Module
+        </button>
+    <?php else: ?>
+        <button type="button" class="btn btn-sm <?php echo $module['system_name_id'] > 0 ? 'btn-outline-success' : 'btn-outline-warning'; ?>" 
+                onclick="editModule(<?php echo $module['id']; ?>, '<?php echo htmlspecialchars($module['name'], ENT_QUOTES); ?>', '<?php echo htmlspecialchars($module['description'], ENT_QUOTES); ?>', <?php echo $module['system_name_id'] ?: 0; ?>, <?php echo $module['is_active'] ? 'true' : 'false'; ?>, <?php echo $module['has_dependencies'] ? 'true' : 'false'; ?>)">
+            <i class="fas fa-edit me-1"></i>
+            <?php if ($module['system_name_id'] > 0): ?>
+                Edit
+            <?php else: ?>
+                Populate & Edit
+            <?php endif; ?>
+        </button>
+    <?php endif; ?>
 </td>
                                     </tr>
                                 <?php endforeach; ?>
@@ -1025,8 +1028,7 @@ if (isset($_GET['updated_count']) && is_numeric($_GET['updated_count'])) {
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <div class="alert alert-info">
-                    <i class="fas fa-info-circle me-2"></i>
+                <div class="alert alert-warning">
                     This module appears in multiple systems. This may indicate data inconsistency.
                 </div>
                 
@@ -1038,9 +1040,45 @@ if (isset($_GET['updated_count']) && is_numeric($_GET['updated_count'])) {
                 
                 <div class="mt-3">
                     <small class="text-muted">
-                        <i class="fas fa-lightbulb me-1"></i>
                         <strong>Tip:</strong> Consider consolidating this module under a single system for better data consistency.
                     </small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Multi-System Edit Warning Modal -->
+<div class="modal fade" id="multiSystemEditModal" tabindex="-1" aria-labelledby="multiSystemEditModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title text-warning" id="multiSystemEditModalLabel">Cannot Edit Multi-System Module</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-warning">
+                    <strong>Warning:</strong> This module appears in multiple systems and cannot be edited directly through this interface.
+                </div>
+                
+                <h6 class="mb-3">Module: <strong id="multiSystemModalModuleName"></strong></h6>
+                
+                <p class="mb-3">This module appears in the following systems:</p>
+                
+                <div class="list-group mb-3" id="multiSystemNamesList">
+                    <!-- System names will be populated here -->
+                </div>
+                
+                <div class="alert alert-info">
+                    <strong>Recommended Actions:</strong>
+                    <ul class="mb-0 mt-2">
+                        <li>First consolidate this module to appear in only one system</li>
+                        <li>Clean up duplicate entries in the database</li>
+                        <li>Then use the regular edit function</li>
+                    </ul>
                 </div>
             </div>
             <div class="modal-footer">
@@ -1102,19 +1140,31 @@ function showSystemNames(moduleName, systemNames) {
     
     systemNames.forEach((systemName, index) => {
         const listItem = document.createElement('div');
-        listItem.className = 'list-group-item d-flex justify-content-between align-items-center';
-        listItem.innerHTML = `
-            <div>
-                <i class="fas fa-cog text-primary me-2"></i>
-                <strong>${systemName}</strong>
-            </div>
-            <span class="badge bg-primary rounded-pill">${index + 1}</span>
-        `;
+        listItem.className = 'list-group-item';
+        listItem.innerHTML = `<strong>${systemName}</strong>`;
         systemNamesList.appendChild(listItem);
     });
     
     const systemNamesModal = new bootstrap.Modal(document.getElementById('systemNamesModal'));
     systemNamesModal.show();
+}
+
+// Function to show multi-system edit warning
+function showMultiSystemEditWarning(moduleName, systemNames) {
+    document.getElementById('multiSystemModalModuleName').textContent = moduleName;
+    
+    const multiSystemNamesList = document.getElementById('multiSystemNamesList');
+    multiSystemNamesList.innerHTML = '';
+    
+    systemNames.forEach((systemName) => {
+        const listItem = document.createElement('div');
+        listItem.className = 'list-group-item';
+        listItem.innerHTML = `<strong>${systemName}</strong>`;
+        multiSystemNamesList.appendChild(listItem);
+    });
+    
+    const multiSystemEditModal = new bootstrap.Modal(document.getElementById('multiSystemEditModal'));
+    multiSystemEditModal.show();
 }
 
 // Global variables for edit modal

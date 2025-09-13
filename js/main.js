@@ -248,67 +248,80 @@ getConfig(fieldType = 'system', currentValue = '') {
     };
 
     /** 🔍 Search Management **/
-    const SearchManager = {
-        setup() {
-            const searchInput = document.getElementById("searchInput");
-            if (!searchInput) return;
+   /** 🔍 Search Management **/
+const SearchManager = {
+    setup() {
+        const searchInput = document.getElementById("searchInput");
+        if (!searchInput) return;
 
-            const pagination = document.querySelector(".pagination");
+        const pagination = document.querySelector(".pagination");
 
-            searchInput.addEventListener("input", () => {
-                if (AppState.searchTimeout) {
-                    clearTimeout(AppState.searchTimeout);
+        searchInput.addEventListener("input", () => {
+            if (AppState.searchTimeout) {
+                clearTimeout(AppState.searchTimeout);
+            }
+
+            AppState.searchTimeout = setTimeout(async () => {
+                const query = searchInput.value.trim();
+
+                if (!query) {
+                    window.location.href = 'index.php';
+                    return;
                 }
 
-                AppState.searchTimeout = setTimeout(async () => {
-                    const query = searchInput.value.trim();
+                if (pagination) {
+                    pagination.style.display = 'none';
+                }
 
-                    if (!query) {
-                        window.location.href = 'index.php';
-                        return;
-                    }
+                try {
+                    await this.performSearch(query);
+                } catch (error) {
+                    console.error("Search error:", error);
+                    this.showSearchError(error.message);
+                }
+            }, CONFIG.SEARCH_DELAY);
+        });
+    },
 
-                    if (pagination) {
-                        pagination.style.display = 'none';
-                    }
-
-                    try {
-                        await this.performSearch(query);
-                    } catch (error) {
-                        console.error("Search error:", error);
-                        this.showSearchError(error.message);
-                    }
-                }, CONFIG.SEARCH_DELAY);
-            });
-        },
-
-        async performSearch(query) {
-    const response = await fetch(`search.php?q=${encodeURIComponent(query)}`);
-    
-    if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    
-    const result = await response.json();
-    
-    // Handle error responses from search.php
-    if (result.error) {
-        throw new Error(result.message || result.error);
-    }
-    
-    // Extract the data array from the wrapped response
-    const data = result.data || result || [];
-    
-    TableRenderer.render(data);
-},
-
-        showSearchError(message) {
-            const tbody = document.querySelector("table tbody");
-            if (tbody) {
-                tbody.innerHTML = `<tr><td colspan="9" class="text-center text-danger">Error fetching results: ${message}</td></tr>`;
-            }
+    async performSearch(query) {
+        const response = await fetch(`search.php?q=${encodeURIComponent(query)}`);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
         }
-    };
+        
+        const html = await response.text();
+        
+        // Directly replace table body content with HTML response
+        const tbody = document.querySelector("table tbody");
+        if (tbody) {
+            tbody.innerHTML = html;
+        }
+        
+        // Reinitialize tooltips and other dynamic elements
+        this.reinitializeDynamicElements();
+    },
+
+    reinitializeDynamicElements() {
+        // Reinitialize Bootstrap tooltips
+        const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+        const tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+            return new bootstrap.Tooltip(tooltipTriggerEl);
+        });
+        
+        // Reinitialize bulk actions
+        if (typeof updateBulkActions === 'function') {
+            updateBulkActions();
+        }
+    },
+
+    showSearchError(message) {
+        const tbody = document.querySelector("table tbody");
+        if (tbody) {
+            tbody.innerHTML = `<tr><td colspan="10" class="text-center text-danger">Error fetching results: ${message}</td></tr>`;
+        }
+    }
+};
 
     /** 📄 Table Rendering **/
     const TableRenderer = {
