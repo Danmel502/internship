@@ -7,59 +7,55 @@ class FeatureController {
     private static $maxFileSize = 10 * 1024 * 1024; // 10MB
     private static $allowedExtensions = ['jpg', 'jpeg', 'png', 'gif', 'pdf', 'doc', 'docx', 'txt', 'zip', 'rar', 'xls', 'xlsx'];
 
-    /**
- * Expand search query using synonym dictionary
+ /**
+ * Expand search query using database synonym dictionary
  */
 private static function expandSearchQuery($searchTerm) {
-    $synonyms = [
-        // Error-related terms
-        'error' => ['error', 'incorrect', 'wrong', 'invalid', 'failed', 'issue', 'problem', 'bug', 'fault', 'duplicate'],
-        'bug' => ['bug', 'error', 'issue', 'problem', 'fault', 'incorrect'],
-        'issue' => ['issue', 'problem', 'error', 'bug', 'trouble', 'fault'],
+    try {
+        $db = Database::getInstance()->getDatabase();
+        $keywordsCollection = $db->getCollection('keywords');
+        
+        // Normalize search term
+        $searchTerm = strtolower(trim($searchTerm));
 
-        // Merge-related terms
-        'merge' => ['merge', 'combine', 'integrate', 'unify', 'join', 'consolidate', 'fusion'],
+        // Handle plural forms (simple cases)
+        if (substr($searchTerm, -3) === 'ies') {
+            $searchTerm = substr($searchTerm, 0, -3) . 'y';
+        } elseif (substr($searchTerm, -2) === 'es') {
+            $searchTerm = substr($searchTerm, 0, -2);
+        } elseif (substr($searchTerm, -1) === 's') {
+            $searchTerm = substr($searchTerm, 0, -1);
+        }
 
-        // Duplicate-related terms
-        'duplicate' => ['duplicate', 'copy', 'redundant', 'replicate', 'clone', 'repeat', 'redundancy'],
+        // Find matching keyword in database
+        $keywordDoc = $keywordsCollection->findOne([
+            'keyword' => $searchTerm,
+            'is_active' => true
+        ]);
 
-        // Validation-related terms
-        'validation' => ['validation', 'check', 'verify', 'confirmation', 'inspection', 'assessment', 'review', 'verification'],
+        if ($keywordDoc && isset($keywordDoc['synonyms'])) {
+            return $keywordDoc['synonyms'];
+        }
 
-        // Incorrect XML-related terms
-        'incorrect xml' => ['incorrect xml', 'invalid xml', 'malformed xml', 'xml error', 'xml issue', 'wrong xml', 'parsing error'],
+        // If no match found, also search in synonyms arrays
+        $keywordDocs = $keywordsCollection->find([
+            'synonyms' => $searchTerm,
+            'is_active' => true
+        ]);
 
-        // Food-related terms
-        'food' => ['jollibee', 'chicken', 'drink', 'ice cream', 'meal', 'snack', 'beverage', 'recipe'],
-        'meal' => ['meal', 'food', 'lunch', 'dinner', 'breakfast', 'snack'],
+        foreach ($keywordDocs as $doc) {
+            if (isset($doc['synonyms'])) {
+                return $doc['synonyms'];
+            }
+        }
 
-        // Authentication terms
-        'login' => ['login', 'signin', 'authentication', 'access', 'auth', 'sign in'],
-        'auth' => ['auth', 'authentication', 'login', 'signin', 'access'],
-
-        // Data terms
-        'data' => ['data', 'information', 'record', 'entry', 'content', 'database'],
-        'database' => ['database', 'data', 'db', 'storage', 'records'],
-
-        // User interface terms
-        'ui' => ['ui', 'interface', 'user interface', 'frontend', 'design'],
-        'interface' => ['interface', 'ui', 'user interface', 'frontend'],
-    ];
-
-    // --- Normalize search term ---
-    $searchTerm = strtolower(trim($searchTerm));
-
-    // Handle plural forms (simple cases)
-    if (substr($searchTerm, -3) === 'ies') {
-        $searchTerm = substr($searchTerm, 0, -3) . 'y'; // e.g. "companies" -> "company"
-    } elseif (substr($searchTerm, -2) === 'es') {
-        $searchTerm = substr($searchTerm, 0, -2); // e.g. "merges" -> "merge"
-    } elseif (substr($searchTerm, -1) === 's') {
-        $searchTerm = substr($searchTerm, 0, -1); // e.g. "foods" -> "food"
+        // Return original term if no synonyms found
+        return [$searchTerm];
+        
+    } catch (Exception $e) {
+        error_log("Error expanding search query: " . $e->getMessage());
+        return [$searchTerm];
     }
-
-    // Return expanded terms if synonym exists, otherwise return original term
-    return $synonyms[$searchTerm] ?? [$searchTerm];
 }
 
     /**
@@ -1662,13 +1658,14 @@ public static function getSearchCount($keyword) {
             }
 
             // Map fields to their respective collections
-            $collectionMap = [
-                'system_name' => 'system_names',
-                'module' => 'modules',
-                'feature' => 'features',
-                'client' => 'clients',
-                'source' => 'sources'
-            ];
+$collectionMap = [
+    'system_name' => 'system_names',
+    'module' => 'modules',
+    'feature' => 'features',
+    'client' => 'clients',
+    'source' => 'sources',
+    'keyword' => 'keywords' // Add this line
+];
 
             if (!isset($collectionMap[$field])) {
                 return [];

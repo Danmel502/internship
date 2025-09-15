@@ -100,7 +100,7 @@ class Database {
             $overallCollection->createIndex(['client' => 1, 'source' => 1]);
 
             // Indexes for reference collections - UPDATED to include 'id' field
-            $referenceCollections = ['system_names', 'modules', 'features', 'clients', 'sources'];
+            $referenceCollections = ['system_names', 'modules', 'features', 'clients', 'sources', 'keywords'];
             foreach ($referenceCollections as $collectionName) {
                 $collection = $this->getCollection($collectionName);
                 $collection->createIndex(['name' => 1], ['unique' => true]);
@@ -138,6 +138,25 @@ class Database {
             }
         }
     }
+
+    /**
+ * Initialize keywords collection with proper structure
+ */
+public function initializeKeywordsCollection(): void {
+    try {
+        $collection = $this->getCollection('keywords');
+        
+        // Create indexes for keywords collection
+        $collection->createIndex(['keyword' => 1], ['unique' => true]);
+        $collection->createIndex(['is_active' => 1]);
+        $collection->createIndex(['created_at' => -1]);
+        $collection->createIndex(['keyword' => 1, 'is_active' => 1]);
+        
+        error_log("Keywords collection initialized successfully");
+    } catch (MongoDB\Driver\Exception\Exception $e) {
+        error_log("Error initializing keywords collection: " . $e->getMessage());
+    }
+}
 
     /**
      * Get active reference data for dropdowns
@@ -407,6 +426,8 @@ try {
     $db = Database::getInstance();
     $db->createIndexes();
     $db->initializeReferenceCollections();
+    $db->initializeKeywordsCollection(); // Keep this
+    // Remove $db->seedKeywordsData(); line
     error_log("Database configuration loaded successfully");
 } catch (Exception $e) {
     error_log("Database initialization error: " . $e->getMessage());
