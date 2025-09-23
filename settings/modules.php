@@ -686,6 +686,7 @@ $current_page = 'settings';
                             <li><a class="dropdown-item active" href="modules.php">Modules</a></li>
                             <li><a class="dropdown-item" href="clients.php">Clients</a></li>
                             <li><a class="dropdown-item" href="sources.php">Sources</a></li>
+                           <li><a class="dropdown-item" href="keywords.php">Keywords</a></li>
                         </ul>
                     </li>
                 </ul>

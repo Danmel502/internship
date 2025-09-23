@@ -21,6 +21,7 @@
                         <li><a class="dropdown-item" href="settings/modules.php">Modules</a></li>
                         <li><a class="dropdown-item" href="settings/clients.php">Clients</a></li>
                         <li><a class="dropdown-item" href="settings/sources.php">Sources</a></li>
+                        <li><a class="dropdown-item" href="settings/keywords.php">Keywords</a></li>
                     </ul>
                 </li>
             </ul>

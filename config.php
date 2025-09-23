@@ -1,7 +1,7 @@
 <?php
 /**
  * Database Configuration File
- * Aligned with FeatureController architecture using 6 collections
+ * Aligned with FeatureController architecture using 7 collections + users collection
  */
 
 require_once 'vendor/autoload.php';
@@ -99,16 +99,24 @@ class Database {
             $overallCollection->createIndex(['system_name' => 1, 'module' => 1]);
             $overallCollection->createIndex(['client' => 1, 'source' => 1]);
 
-            // Indexes for reference collections - UPDATED to include 'id' field
-            $referenceCollections = ['system_names', 'modules', 'features', 'clients', 'sources', 'keywords'];
+            // Indexes for reference collections
+            $referenceCollections = ['system_names', 'modules', 'features', 'clients', 'sources'];
             foreach ($referenceCollections as $collectionName) {
                 $collection = $this->getCollection($collectionName);
                 $collection->createIndex(['name' => 1], ['unique' => true]);
-                $collection->createIndex(['id' => 1], ['unique' => true]); // Added id index
+                $collection->createIndex(['id' => 1], ['unique' => true]);
                 $collection->createIndex(['is_active' => 1]);
                 $collection->createIndex(['created_at' => -1]);
                 $collection->createIndex(['name' => 1, 'is_active' => 1]);
             }
+
+            // Indexes for users collection
+            $usersCollection = $this->getCollection('users');
+            $usersCollection->createIndex(['username' => 1], ['unique' => true]);
+            $usersCollection->createIndex(['email' => 1], ['unique' => true]);
+            $usersCollection->createIndex(['is_active' => 1]);
+            $usersCollection->createIndex(['created_at' => -1]);
+            $usersCollection->createIndex(['last_login' => -1]);
 
             error_log("Database indexes created successfully");
         } catch (MongoDB\Driver\Exception\Exception $e) {
@@ -128,7 +136,7 @@ class Database {
 
                 // Ensure unique indexes on both name and id fields
                 $collection->createIndex(['name' => 1], ['unique' => true]);
-                $collection->createIndex(['id' => 1], ['unique' => true]); // Added id index
+                $collection->createIndex(['id' => 1], ['unique' => true]);
                 $collection->createIndex(['is_active' => 1]);
                 $collection->createIndex(['created_at' => -1]);
                 $collection->createIndex(['name' => 1, 'is_active' => 1]);
@@ -140,23 +148,303 @@ class Database {
     }
 
     /**
- * Initialize keywords collection with proper structure
- */
-public function initializeKeywordsCollection(): void {
-    try {
-        $collection = $this->getCollection('keywords');
-        
-        // Create indexes for keywords collection
-        $collection->createIndex(['keyword' => 1], ['unique' => true]);
-        $collection->createIndex(['is_active' => 1]);
-        $collection->createIndex(['created_at' => -1]);
-        $collection->createIndex(['keyword' => 1, 'is_active' => 1]);
-        
-        error_log("Keywords collection initialized successfully");
-    } catch (MongoDB\Driver\Exception\Exception $e) {
-        error_log("Error initializing keywords collection: " . $e->getMessage());
+     * Initialize keywords collection with proper structure
+     */
+    public function initializeKeywordsCollection(): void {
+        try {
+            $collection = $this->getCollection('keywords');
+            
+            // Create indexes for keywords collection
+            $collection->createIndex(['keyword' => 1], ['unique' => true]);
+            $collection->createIndex(['id' => 1], ['unique' => true]);
+            $collection->createIndex(['is_active' => 1]);
+            $collection->createIndex(['created_at' => -1]);
+            $collection->createIndex(['keyword' => 1, 'is_active' => 1]);
+            
+            error_log("Keywords collection initialized successfully");
+        } catch (MongoDB\Driver\Exception\Exception $e) {
+            error_log("Error initializing keywords collection: " . $e->getMessage());
+        }
     }
-}
+
+    /**
+     * Initialize users collection and create default admin user
+     */
+    public function initializeUsersCollection(): void {
+        try {
+            $collection = $this->getCollection('users');
+            
+            // Create indexes for users collection
+            $collection->createIndex(['username' => 1], ['unique' => true]);
+            $collection->createIndex(['email' => 1], ['unique' => true]);
+            $collection->createIndex(['is_active' => 1]);
+            $collection->createIndex(['created_at' => -1]);
+            $collection->createIndex(['last_login' => -1]);
+
+            // Check if default admin user exists
+            $adminExists = $collection->findOne(['username' => 'admin']);
+            
+            if (!$adminExists) {
+                // Create default admin user
+                $defaultAdmin = [
+                    'username' => 'admin',
+                    'email' => 'admin@mediatrack.com',
+                    'password' => password_hash('admin123', PASSWORD_BCRYPT),
+                    'full_name' => 'System Administrator',
+                    'role' => 'admin',
+                    'is_active' => true,
+                    'created_at' => new MongoDB\BSON\UTCDateTime(),
+                    'updated_at' => new MongoDB\BSON\UTCDateTime(),
+                    'last_login' => null
+                ];
+                
+                $result = $collection->insertOne($defaultAdmin);
+                if ($result->getInsertedCount() === 1) {
+                    error_log("Default admin user created successfully");
+                }
+            }
+            
+            error_log("Users collection initialized successfully");
+        } catch (MongoDB\Driver\Exception\Exception $e) {
+            error_log("Error initializing users collection: " . $e->getMessage());
+        }
+    }
+
+    /**
+     * USER MANAGEMENT METHODS
+     */
+
+    /**
+     * Create a new user
+     */
+    public function createUser(array $userData): array {
+        try {
+            $collection = $this->getCollection('users');
+            
+            // Check if username already exists
+            $existingUser = $collection->findOne(['username' => $userData['username']]);
+            if ($existingUser) {
+                return ['success' => false, 'error' => 'Username already exists'];
+            }
+            
+            // Check if email already exists
+            $existingEmail = $collection->findOne(['email' => $userData['email']]);
+            if ($existingEmail) {
+                return ['success' => false, 'error' => 'Email already exists'];
+            }
+            
+            // Hash password
+            $userData['password'] = password_hash($userData['password'], PASSWORD_BCRYPT);
+            
+            // Set default values
+            $userData['is_active'] = true;
+            $userData['role'] = $userData['role'] ?? 'user';
+            $userData['created_at'] = new MongoDB\BSON\UTCDateTime();
+            $userData['updated_at'] = new MongoDB\BSON\UTCDateTime();
+            $userData['last_login'] = null;
+            
+            $result = $collection->insertOne($userData);
+            
+            return [
+                'success' => $result->getInsertedCount() === 1,
+                'user_id' => $result->getInsertedId()
+            ];
+            
+        } catch (MongoDB\Driver\Exception\Exception $e) {
+            error_log("Error creating user: " . $e->getMessage());
+            return ['success' => false, 'error' => 'Database error occurred'];
+        }
+    }
+
+    /**
+     * Authenticate user login
+     */
+    public function authenticateUser(string $username, string $password): array {
+        try {
+            $collection = $this->getCollection('users');
+            
+            $user = $collection->findOne([
+                'username' => $username,
+                'is_active' => true
+            ]);
+            
+            if (!$user) {
+                return ['success' => false, 'error' => 'Invalid username or password'];
+            }
+            
+            if (!password_verify($password, $user['password'])) {
+                return ['success' => false, 'error' => 'Invalid username or password'];
+            }
+            
+            // Update last login
+            $collection->updateOne(
+                ['_id' => $user['_id']],
+                ['$set' => ['last_login' => new MongoDB\BSON\UTCDateTime()]]
+            );
+            
+            return [
+                'success' => true,
+                'user' => [
+                    'id' => (string)$user['_id'],
+                    'username' => $user['username'],
+                    'email' => $user['email'],
+                    'full_name' => $user['full_name'] ?? '',
+                    'role' => $user['role'] ?? 'user',
+                    'last_login' => $user['last_login']
+                ]
+            ];
+            
+        } catch (MongoDB\Driver\Exception\Exception $e) {
+            error_log("Error authenticating user: " . $e->getMessage());
+            return ['success' => false, 'error' => 'Database error occurred'];
+        }
+    }
+
+    /**
+     * Get user by username
+     */
+    public function getUserByUsername(string $username): ?array {
+        try {
+            $collection = $this->getCollection('users');
+            $user = $collection->findOne(['username' => $username, 'is_active' => true]);
+            
+            if ($user) {
+                return [
+                    'id' => (string)$user['_id'],
+                    'username' => $user['username'],
+                    'email' => $user['email'],
+                    'full_name' => $user['full_name'] ?? '',
+                    'role' => $user['role'] ?? 'user',
+                    'created_at' => $user['created_at'],
+                    'last_login' => $user['last_login']
+                ];
+            }
+            
+            return null;
+        } catch (Exception $e) {
+            error_log("Error getting user: " . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Update user profile
+     */
+    public function updateUser(string $userId, array $updateData): bool {
+        try {
+            $collection = $this->getCollection('users');
+            
+            // Remove sensitive fields that shouldn't be updated directly
+            unset($updateData['password'], $updateData['_id'], $updateData['created_at']);
+            
+            $updateData['updated_at'] = new MongoDB\BSON\UTCDateTime();
+            
+            $result = $collection->updateOne(
+                ['_id' => new MongoDB\BSON\ObjectId($userId)],
+                ['$set' => $updateData]
+            );
+            
+            return $result->getModifiedCount() === 1;
+        } catch (Exception $e) {
+            error_log("Error updating user: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Change user password
+     */
+    public function changePassword(string $userId, string $currentPassword, string $newPassword): array {
+        try {
+            $collection = $this->getCollection('users');
+            
+            // Get current user
+            $user = $collection->findOne(['_id' => new MongoDB\BSON\ObjectId($userId)]);
+            if (!$user) {
+                return ['success' => false, 'error' => 'User not found'];
+            }
+            
+            // Verify current password
+            if (!password_verify($currentPassword, $user['password'])) {
+                return ['success' => false, 'error' => 'Current password is incorrect'];
+            }
+            
+            // Update password
+            $hashedPassword = password_hash($newPassword, PASSWORD_BCRYPT);
+            $result = $collection->updateOne(
+                ['_id' => new MongoDB\BSON\ObjectId($userId)],
+                ['$set' => [
+                    'password' => $hashedPassword,
+                    'updated_at' => new MongoDB\BSON\UTCDateTime()
+                ]]
+            );
+            
+            return ['success' => $result->getModifiedCount() === 1];
+            
+        } catch (Exception $e) {
+            error_log("Error changing password: " . $e->getMessage());
+            return ['success' => false, 'error' => 'Database error occurred'];
+        }
+    }
+
+    /**
+     * Get all users (admin function)
+     */
+    public function getAllUsers(int $limit = 50, int $skip = 0): array {
+        try {
+            $collection = $this->getCollection('users');
+            
+            $cursor = $collection->find(
+                ['is_active' => true],
+                [
+                    'sort' => ['created_at' => -1],
+                    'limit' => $limit,
+                    'skip' => $skip,
+                    'projection' => ['password' => 0] // Exclude password field
+                ]
+            );
+            
+            $users = [];
+            foreach ($cursor as $user) {
+                $users[] = [
+                    'id' => (string)$user['_id'],
+                    'username' => $user['username'],
+                    'email' => $user['email'],
+                    'full_name' => $user['full_name'] ?? '',
+                    'role' => $user['role'] ?? 'user',
+                    'created_at' => $user['created_at'],
+                    'last_login' => $user['last_login']
+                ];
+            }
+            
+            return $users;
+        } catch (Exception $e) {
+            error_log("Error getting all users: " . $e->getMessage());
+            return [];
+        }
+    }
+
+    /**
+     * Deactivate user (soft delete)
+     */
+    public function deactivateUser(string $userId): bool {
+        try {
+            $collection = $this->getCollection('users');
+            $result = $collection->updateOne(
+                ['_id' => new MongoDB\BSON\ObjectId($userId)],
+                ['$set' => [
+                    'is_active' => false,
+                    'updated_at' => new MongoDB\BSON\UTCDateTime()
+                ]]
+            );
+            return $result->getModifiedCount() === 1;
+        } catch (Exception $e) {
+            error_log("Error deactivating user: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    // ... (keep all existing methods from original config.php)
 
     /**
      * Get active reference data for dropdowns
@@ -184,7 +472,7 @@ public function initializeKeywordsCollection(): void {
     }
 
     /**
-     * Add new reference data with auto-increment ID - FIXED
+     * Add new reference data with auto-increment ID
      */
     public function addReferenceData(string $collectionName, string $name): int|bool {
         if (empty(trim($name))) {
@@ -205,7 +493,7 @@ public function initializeKeywordsCollection(): void {
             $nextId = ($lastDoc['id'] ?? 0) + 1;
             
             $document = [
-                'id' => $nextId, // Added auto-increment ID
+                'id' => $nextId,
                 'name' => trim($name),
                 'is_active' => true,
                 'created_at' => new MongoDB\BSON\UTCDateTime(),
@@ -215,7 +503,6 @@ public function initializeKeywordsCollection(): void {
             $result = $collection->insertOne($document);
             return $result->getInsertedCount() === 1 ? $nextId : false;
         } catch (MongoDB\Driver\Exception\Exception $e) {
-            // Don't log duplicate key errors as they're expected
             if (strpos($e->getMessage(), 'duplicate key') === false) {
                 error_log("Error adding reference data to {$collectionName}: " . $e->getMessage());
             }
@@ -288,11 +575,11 @@ public function initializeKeywordsCollection(): void {
     }
 
     /**
-     * Delete feature from overall collection (matches delete.php pattern)
+     * Delete feature from overall collection
      */
     public function deleteFeature(string $id): bool {
         try {
-            $collection = $this->getCollection(); // Uses default 'overall' collection
+            $collection = $this->getCollection();
             $objectId = new MongoDB\BSON\ObjectId($id);
             
             $result = $collection->deleteOne(['_id' => $objectId]);
@@ -307,11 +594,11 @@ public function initializeKeywordsCollection(): void {
     }
 
     /**
-     * Delete feature with session message handling (matches delete.php exactly)
+     * Delete feature with session message handling
      */
     public function deleteFeatureWithSession(string $id): array {
         try {
-            $collection = $this->getCollection(); // Uses default 'overall' collection
+            $collection = $this->getCollection();
             $result = $collection->deleteOne(['_id' => new MongoDB\BSON\ObjectId($id)]);
 
             if ($result->getDeletedCount() > 0) {
@@ -373,7 +660,7 @@ public function initializeKeywordsCollection(): void {
      */
     public function getStats(): array {
         try {
-            $collections = ['overall', 'system_names', 'modules', 'features', 'clients', 'sources'];
+            $collections = ['overall', 'system_names', 'modules', 'features', 'clients', 'sources', 'users'];
             $stats = [];
             
             foreach ($collections as $collectionName) {
@@ -426,8 +713,8 @@ try {
     $db = Database::getInstance();
     $db->createIndexes();
     $db->initializeReferenceCollections();
-    $db->initializeKeywordsCollection(); // Keep this
-    // Remove $db->seedKeywordsData(); line
+    $db->initializeKeywordsCollection();
+    $db->initializeUsersCollection(); // Initialize users collection
     error_log("Database configuration loaded successfully");
 } catch (Exception $e) {
     error_log("Database initialization error: " . $e->getMessage());

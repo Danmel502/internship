@@ -7,9 +7,6 @@ class FeatureController {
     private static $maxFileSize = 10 * 1024 * 1024; // 10MB
     private static $allowedExtensions = ['jpg', 'jpeg', 'png', 'gif', 'pdf', 'doc', 'docx', 'txt', 'zip', 'rar', 'xls', 'xlsx'];
 
- /**
- * Expand search query using database synonym dictionary
- */
 private static function expandSearchQuery($searchTerm) {
     try {
         $db = Database::getInstance()->getDatabase();
@@ -17,39 +14,77 @@ private static function expandSearchQuery($searchTerm) {
         
         // Normalize search term
         $searchTerm = strtolower(trim($searchTerm));
-
-        // Handle plural forms (simple cases)
-        if (substr($searchTerm, -3) === 'ies') {
-            $searchTerm = substr($searchTerm, 0, -3) . 'y';
-        } elseif (substr($searchTerm, -2) === 'es') {
-            $searchTerm = substr($searchTerm, 0, -2);
-        } elseif (substr($searchTerm, -1) === 's') {
-            $searchTerm = substr($searchTerm, 0, -1);
-        }
-
-        // Find matching keyword in database
+        error_log("DEBUG: Searching for term: '$searchTerm'");
+        
+        // Method 1: Direct exact match (keep existing functionality)
         $keywordDoc = $keywordsCollection->findOne([
             'keyword' => $searchTerm,
             'is_active' => true
         ]);
-
+        
+        error_log("DEBUG: Direct keyword match: " . ($keywordDoc ? 'Found' : 'Not found'));
         if ($keywordDoc && isset($keywordDoc['synonyms'])) {
+            error_log("DEBUG: Found synonyms via direct match: " . json_encode($keywordDoc['synonyms']));
             return $keywordDoc['synonyms'];
         }
-
-        // If no match found, also search in synonyms arrays
+        
+        // Method 2: Partial match in keywords using regex
+        $regexPattern = new MongoDB\BSON\Regex($searchTerm, 'i'); // 'i' for case-insensitive
+        $keywordDoc = $keywordsCollection->findOne([
+            'keyword' => $regexPattern,
+            'is_active' => true
+        ]);
+        
+        error_log("DEBUG: Partial keyword match: " . ($keywordDoc ? 'Found' : 'Not found'));
+        if ($keywordDoc && isset($keywordDoc['synonyms'])) {
+            error_log("DEBUG: Found synonyms via partial keyword match: " . json_encode($keywordDoc['synonyms']));
+            return $keywordDoc['synonyms'];
+        }
+        
+        // Method 3: Search in synonyms arrays (exact match)
         $keywordDocs = $keywordsCollection->find([
             'synonyms' => $searchTerm,
             'is_active' => true
         ]);
-
+        
         foreach ($keywordDocs as $doc) {
+            error_log("DEBUG: Found in synonyms array (exact): " . json_encode($doc['synonyms']));
             if (isset($doc['synonyms'])) {
                 return $doc['synonyms'];
             }
         }
-
-        // Return original term if no synonyms found
+        
+        // Method 4: Partial match in synonyms arrays using regex
+        $keywordDocs = $keywordsCollection->find([
+            'synonyms' => $regexPattern,
+            'is_active' => true
+        ]);
+        
+        foreach ($keywordDocs as $doc) {
+            error_log("DEBUG: Found in synonyms array (partial): " . json_encode($doc['synonyms']));
+            if (isset($doc['synonyms'])) {
+                return $doc['synonyms'];
+            }
+        }
+        
+        // Method 5: Full text search approach (alternative - requires text index)
+        // Uncomment this section if you want to use MongoDB's text search capabilities
+        // You'll need to create a text index first: db.keywords.createIndex({"keyword": "text", "synonyms": "text"})
+        /*
+        $textSearchResults = $keywordsCollection->find([
+            '$text' => ['$search' => $searchTerm],
+            'is_active' => true
+        ]);
+        
+        foreach ($textSearchResults as $doc) {
+            error_log("DEBUG: Found via text search: " . json_encode($doc['synonyms']));
+            if (isset($doc['synonyms'])) {
+                return $doc['synonyms'];
+            }
+        }
+        */
+        
+        error_log("DEBUG: No matches found, returning original term");
         return [$searchTerm];
         
     } catch (Exception $e) {
@@ -1663,8 +1698,7 @@ $collectionMap = [
     'module' => 'modules',
     'feature' => 'features',
     'client' => 'clients',
-    'source' => 'sources',
-    'keyword' => 'keywords' // Add this line
+    'source' => 'sources'
 ];
 
             if (!isset($collectionMap[$field])) {
@@ -1694,13 +1728,20 @@ $collectionMap = [
      * Add reference data if it doesn't exist
      */
     private static function ensureReferenceDataWithId($db, $collectionName, $value) {
-    if (empty(trim($value))) return null;
+    if (empty(trim($value)) || $value === null) return null;
+
+    if ($collectionName === 'keywords') {
+        return null;
+    }
     
     $value = trim($value);
     $collection = $db->getCollection($collectionName);
     
+    // Use different field name for keywords collection
+    $fieldName = ($collectionName === 'keywords') ? 'keyword' : 'name';
+    
     // Check if exists
-    $existing = $collection->findOne(['name' => $value, 'is_active' => true]);
+    $existing = $collection->findOne([$fieldName => $value, 'is_active' => true]);
     if ($existing) {
         return $existing['id'] ?? $existing['_id'];
     }
@@ -1711,7 +1752,7 @@ $collectionMap = [
     
     $doc = [
         'id' => $nextId,
-        'name' => $value,
+        $fieldName => $value,  // Use the correct field name
         'is_active' => true,
         'created_at' => new MongoDB\BSON\UTCDateTime(),
         'updated_at' => new MongoDB\BSON\UTCDateTime()

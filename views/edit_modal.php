@@ -1,7 +1,10 @@
 <?php
-// edit_modal.php - Updated with enhanced edit functionality
+// edit_modal.php - Updated with enhanced edit functionality and proper error handling
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../controllers/FeatureController.php';
+
+// Initialize feature variable to prevent undefined errors
+$feature = $feature ?? [];
 
 // Get the current feature data from the database
 $currentFeatureData = null;
@@ -19,7 +22,14 @@ if (isset($_GET['edit_id']) || isset($feature['_id'])) {
 }
 
 // Use current feature data if available, otherwise fall back to the loop variable
-$displayFeature = $currentFeatureData ?? $feature;
+// If both are null/empty, initialize with empty array to prevent errors
+$displayFeature = $currentFeatureData ?? $feature ?? [];
+
+// Early exit if no feature data is available
+if (empty($displayFeature) || !isset($displayFeature['_id'])) {
+    
+    return;
+}
 
 // Handle form submissions for editing features
 $message = '';
@@ -69,6 +79,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_feature'])) {
             
             // Get the current feature to preserve file if not changed
             $currentFeature = $collection->findOne(['_id' => new MongoDB\BSON\ObjectId($editId)]);
+            if (!$currentFeature) {
+                throw new Exception("Feature not found");
+            }
+            
             $currentFile = $currentFeature['sample_file'] ?? '';
             
             // Prepare update data
@@ -106,10 +120,77 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_feature'])) {
                 
                 // Clear cache for cascading dropdowns
                 $_SESSION['last_data_update'] = time();
-$_SESSION['feature_updated'] = true;
+                $_SESSION['feature_updated'] = true;
             } else {
                 $message = 'No changes were made to the feature';
                 $messageType = 'info';
+            }
+            
+            // ADD MODULE UPDATE LOGIC AFTER SUCCESSFUL FEATURE UPDATE
+            $oldModule = $currentFeature['module'] ?? '';
+            $newModule = trim($_POST['edit_module'] ?? '');
+            
+            // Check if module name was changed and we have system context
+            if (!empty($oldModule) && !empty($newModule) && $oldModule !== $newModule && !empty($systemName)) {
+                try {
+                    $modulesCollection = $db->getCollection('modules');
+                    $overallCollection = $db->getCollection('overall');
+                    
+                    // Check if the new module already exists for this system
+                    $existingModule = $modulesCollection->findOne([
+                        'name' => $newModule,
+                        'system_name' => $systemName,
+                        'is_active' => true
+                    ]);
+                    
+                    if (!$existingModule) {
+                        // Create the new module if it doesn't exist
+                        $lastModuleDoc = $modulesCollection->findOne([], ['sort' => ['id' => -1]]);
+                        $nextModuleId = ($lastModuleDoc['id'] ?? 0) + 1;
+                        
+                        $modulesCollection->insertOne([
+                            'id' => $nextModuleId,
+                            'name' => $newModule,
+                            'description' => 'Created from feature edit',
+                            'system_name' => $systemName,
+                            'system_name_id' => 0, // You might need to look this up
+                            'is_active' => true,
+                            'created_at' => new MongoDB\BSON\UTCDateTime(),
+                            'updated_at' => new MongoDB\BSON\UTCDateTime()
+                        ]);
+                        
+                        // Also update the overall collection for AJAX compatibility
+                        $overallCollection->updateMany(
+                            [
+                                'system_name' => $systemName,
+                                'module' => $newModule
+                            ],
+                            ['$set' => [
+                                'module_id' => $nextModuleId,
+                                'updated_at' => new MongoDB\BSON\UTCDateTime()
+                            ]],
+                            ['upsert' => true]
+                        );
+                        
+                        $message .= ' New module created.';
+                    }
+                    
+                    // Update all features with the old module to use the new module
+                    $overallCollection->updateMany(
+                        [
+                            'system_name' => $systemName,
+                            'module' => $oldModule
+                        ],
+                        ['$set' => [
+                            'module' => $newModule,
+                            'updated_at' => new MongoDB\BSON\UTCDateTime()
+                        ]]
+                    );
+                    
+                } catch (Exception $e) {
+                    error_log("Module update error: " . $e->getMessage());
+                    // Don't show this error to users as it doesn't affect the main feature update
+                }
             }
             
         } catch (Exception $e) {
@@ -120,74 +201,6 @@ $_SESSION['feature_updated'] = true;
     } else {
         $message = 'Please fill all required fields';
         $messageType = 'error';
-    }
-
-    // ADD THIS SECTION AFTER YOUR EXISTING UPDATE LOGIC
-    $oldModule = $currentFeature['module'] ?? '';
-    $newModule = trim($_POST['edit_module'] ?? '');
-    $systemName = trim($_POST['edit_system_name'] ?? '');
-    
-    // Check if module name was changed and we have system context
-    if (!empty($oldModule) && !empty($newModule) && $oldModule !== $newModule && !empty($systemName)) {
-        try {
-            $modulesCollection = $db->getCollection('modules');
-            $overallCollection = $db->getCollection('overall');
-            
-            // Check if the new module already exists for this system
-            $existingModule = $modulesCollection->findOne([
-                'name' => $newModule,
-                'system_name' => $systemName,
-                'is_active' => true
-            ]);
-            
-            if (!$existingModule) {
-                // Create the new module if it doesn't exist
-                $lastModuleDoc = $modulesCollection->findOne([], ['sort' => ['id' => -1]]);
-                $nextModuleId = ($lastModuleDoc['id'] ?? 0) + 1;
-                
-                $modulesCollection->insertOne([
-                    'id' => $nextModuleId,
-                    'name' => $newModule,
-                    'description' => 'Created from feature edit',
-                    'system_name' => $systemName,
-                    'system_name_id' => 0, // You might need to look this up
-                    'is_active' => true,
-                    'created_at' => new MongoDB\BSON\UTCDateTime(),
-                    'updated_at' => new MongoDB\BSON\UTCDateTime()
-                ]);
-                
-                // Also update the overall collection for AJAX compatibility
-                $overallCollection->updateMany(
-                    [
-                        'system_name' => $systemName,
-                        'module' => $newModule
-                    ],
-                    ['$set' => [
-                        'module_id' => $nextModuleId,
-                        'updated_at' => new MongoDB\BSON\UTCDateTime()
-                    ]],
-                    ['upsert' => true]
-                );
-                
-                $message .= ' New module created.';
-            }
-            
-            // Update all features with the old module to use the new module
-            $overallCollection->updateMany(
-                [
-                    'system_name' => $systemName,
-                    'module' => $oldModule
-                ],
-                ['$set' => [
-                    'module' => $newModule,
-                    'updated_at' => new MongoDB\BSON\UTCDateTime()
-                ]]
-            );
-            
-        } catch (Exception $e) {
-            error_log("Module update error: " . $e->getMessage());
-            // Don't show this error to users as it doesn't affect the main feature update
-        }
     }
     
     // Store message in session for display after redirect
@@ -205,6 +218,22 @@ if (isset($_SESSION['flash_message'])) {
     $messageType = $_SESSION['flash_message_type'];
     unset($_SESSION['flash_message']);
     unset($_SESSION['flash_message_type']);
+}
+
+// Ensure we have required variables for the modal
+$featureId = (string)($displayFeature['_id'] ?? '');
+$systemName = $displayFeature['system_name'] ?? '';
+$module = $displayFeature['module'] ?? '';
+$featureName = $displayFeature['feature'] ?? '';
+$client = $displayFeature['client'] ?? '';
+$description = $displayFeature['description'] ?? '';
+$source = $displayFeature['source'] ?? '';
+$sampleFile = $displayFeature['sample_file'] ?? '';
+
+// Validate that we have essential data
+if (empty($featureId)) {
+    echo '<div class="alert alert-danger">Error: Invalid feature ID</div>';
+    return;
 }
 ?>
 
@@ -227,24 +256,24 @@ if (isset($_SESSION['flash_message'])) {
     </script>
 <?php endif; ?>
 
-<div class="modal fade" id="editModal<?= htmlspecialchars((string)$feature['_id']) ?>" tabindex="-1"
-     aria-labelledby="editModalLabel<?= htmlspecialchars((string)$feature['_id']) ?>" aria-hidden="true">
+<div class="modal fade" id="editModal<?= htmlspecialchars($featureId) ?>" tabindex="-1"
+     aria-labelledby="editModalLabel<?= htmlspecialchars($featureId) ?>" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-centered">
         <form method="POST" action="" enctype="multipart/form-data"
-              onsubmit="return handleSaveEdit('<?= htmlspecialchars((string)$feature['_id']) ?>')">
+              onsubmit="return handleSaveEdit('<?= htmlspecialchars($featureId) ?>')">
               
-            <input type="hidden" name="edit_id" value="<?= htmlspecialchars((string)$feature['_id']) ?>">
+            <input type="hidden" name="edit_id" value="<?= htmlspecialchars($featureId) ?>">
 
             <div class="modal-content border-0 shadow-lg">
                 <!-- Header - Cleaner design -->
                 <div class="modal-header bg-success text-white border-0 rounded-top-3 p-3">
-                    <h5 class="modal-title fs-6 fw-semibold" id="editModalLabel<?= htmlspecialchars((string)$feature['_id']) ?>">
+                    <h5 class="modal-title fs-6 fw-semibold" id="editModalLabel<?= htmlspecialchars($featureId) ?>">
                         <i class="fas fa-edit me-2"></i>
-                        Edit Feature – <?= htmlspecialchars($feature['system_name'] ?? 'N/A') ?>
+                        Edit Feature – <?= htmlspecialchars($systemName ?: 'N/A') ?>
                     </h5>
                     <button type="button" class="btn-close btn-close-white p-2" data-bs-dismiss="modal"
                             aria-label="Close"
-                            onclick="handleCancelEdit('<?= htmlspecialchars((string)$feature['_id']) ?>')"></button>
+                            onclick="handleCancelEdit('<?= htmlspecialchars($featureId) ?>')"></button>
                 </div>
 
                 <!-- Body - Improved spacing and cleaner design -->
@@ -260,13 +289,14 @@ if (isset($_SESSION['flash_message'])) {
                             <label class="form-label small text-muted mb-1 fw-medium">System Name <span class="text-danger">*</span></label>
                             <select name="edit_system_name" 
                                     class="form-select select2-edit border-0 shadow-sm" 
-                                    id="edit_system_name_<?= htmlspecialchars((string)$feature['_id']) ?>"
+                                    id="edit_system_name_<?= htmlspecialchars($featureId) ?>"
                                     required>
                                 <option value="">Select or type a system name...</option>
                                 <?php
-                                $currentSystemName = $feature['system_name'] ?? '';
-                                foreach ($optionSets['system'] as $option):
-                                    $selected = ($currentSystemName === $option) ? 'selected' : '';
+                                // Safely get system options
+                                $systemOptions = isset($optionSets['system']) && is_array($optionSets['system']) ? $optionSets['system'] : [];
+                                foreach ($systemOptions as $option):
+                                    $selected = ($systemName === $option) ? 'selected' : '';
                                 ?>
                                     <option value="<?= htmlspecialchars($option, ENT_QUOTES, 'UTF-8') ?>" <?= $selected ?>>
                                         <?= htmlspecialchars($option, ENT_QUOTES, 'UTF-8') ?>
@@ -274,9 +304,9 @@ if (isset($_SESSION['flash_message'])) {
                                 <?php endforeach; ?>
                                 
                                 <!-- Add current value if it's not in the list -->
-                                <?php if ($currentSystemName && !in_array($currentSystemName, $optionSets['system'])): ?>
-                                    <option value="<?= htmlspecialchars($currentSystemName, ENT_QUOTES, 'UTF-8') ?>" selected>
-                                        <?= htmlspecialchars($currentSystemName, ENT_QUOTES, 'UTF-8') ?>
+                                <?php if ($systemName && !in_array($systemName, $systemOptions)): ?>
+                                    <option value="<?= htmlspecialchars($systemName, ENT_QUOTES, 'UTF-8') ?>" selected>
+                                        <?= htmlspecialchars($systemName, ENT_QUOTES, 'UTF-8') ?>
                                     </option>
                                 <?php endif; ?>
                             </select>
@@ -287,12 +317,12 @@ if (isset($_SESSION['flash_message'])) {
                             <label class="form-label small text-muted mb-1 fw-medium">Module <span class="text-danger">*</span></label>
                             <select name="edit_module" 
                                     class="form-select select2-edit border-0 shadow-sm" 
-                                    id="edit_module_<?= htmlspecialchars((string)$feature['_id']) ?>"
+                                    id="edit_module_<?= htmlspecialchars($featureId) ?>"
                                     required>
                                 <option value="">Select or type a module...</option>
                                 <?php
-                                $currentModule = $feature['module'] ?? '';
                                 $moduleOptions = [];
+                                $controllerLoaded = isset($controllerLoaded) ? $controllerLoaded : true;
                                 if ($controllerLoaded && class_exists('FeatureController')) {
                                     try {
                                         $moduleOptions = FeatureController::getDistinctValues('module') ?? [];
@@ -306,7 +336,7 @@ if (isset($_SESSION['flash_message'])) {
                                 }
                                 
                                 foreach ($moduleOptions as $option):
-                                    $selected = ($currentModule === $option) ? 'selected' : '';
+                                    $selected = ($module === $option) ? 'selected' : '';
                                 ?>
                                     <option value="<?= htmlspecialchars($option, ENT_QUOTES, 'UTF-8') ?>" <?= $selected ?>>
                                         <?= htmlspecialchars($option, ENT_QUOTES, 'UTF-8') ?>
@@ -314,9 +344,9 @@ if (isset($_SESSION['flash_message'])) {
                                 <?php endforeach; ?>
                                 
                                 <!-- Add current value if it's not in the list -->
-                                <?php if ($currentModule && !in_array($currentModule, $moduleOptions)): ?>
-                                    <option value="<?= htmlspecialchars($currentModule, ENT_QUOTES, 'UTF-8') ?>" selected>
-                                        <?= htmlspecialchars($currentModule, ENT_QUOTES, 'UTF-8') ?>
+                                <?php if ($module && !in_array($module, $moduleOptions)): ?>
+                                    <option value="<?= htmlspecialchars($module, ENT_QUOTES, 'UTF-8') ?>" selected>
+                                        <?= htmlspecialchars($module, ENT_QUOTES, 'UTF-8') ?>
                                     </option>
                                 <?php endif; ?>
                             </select>
@@ -327,10 +357,9 @@ if (isset($_SESSION['flash_message'])) {
                             <label class="form-label small text-muted mb-1 fw-medium">Feature</label>
                             <select name="edit_feature" 
                                     class="form-select select2-edit border-0 shadow-sm" 
-                                    id="edit_feature_<?= htmlspecialchars((string)$feature['_id']) ?>">
+                                    id="edit_feature_<?= htmlspecialchars($featureId) ?>">
                                 <option value="">Select or type a feature...</option>
                                 <?php
-                                $currentFeature = $feature['feature'] ?? '';
                                 $featureOptions = [];
                                 if ($controllerLoaded && class_exists('FeatureController')) {
                                     try {
@@ -345,7 +374,7 @@ if (isset($_SESSION['flash_message'])) {
                                 }
                                 
                                 foreach ($featureOptions as $option):
-                                    $selected = ($currentFeature === $option) ? 'selected' : '';
+                                    $selected = ($featureName === $option) ? 'selected' : '';
                                 ?>
                                     <option value="<?= htmlspecialchars($option, ENT_QUOTES, 'UTF-8') ?>" <?= $selected ?>>
                                         <?= htmlspecialchars($option, ENT_QUOTES, 'UTF-8') ?>
@@ -353,9 +382,9 @@ if (isset($_SESSION['flash_message'])) {
                                 <?php endforeach; ?>
                                 
                                 <!-- Add current value if it's not in the list -->
-                                <?php if ($currentFeature && !in_array($currentFeature, $featureOptions)): ?>
-                                    <option value="<?= htmlspecialchars($currentFeature, ENT_QUOTES, 'UTF-8') ?>" selected>
-                                        <?= htmlspecialchars($currentFeature, ENT_QUOTES, 'UTF-8') ?>
+                                <?php if ($featureName && !in_array($featureName, $featureOptions)): ?>
+                                    <option value="<?= htmlspecialchars($featureName, ENT_QUOTES, 'UTF-8') ?>" selected>
+                                        <?= htmlspecialchars($featureName, ENT_QUOTES, 'UTF-8') ?>
                                     </option>
                                 <?php endif; ?>
                             </select>
@@ -366,11 +395,10 @@ if (isset($_SESSION['flash_message'])) {
                             <label class="form-label small text-muted mb-1 fw-medium">Client <span class="text-danger">*</span></label>
                             <select name="edit_client" 
                                     class="form-select select2-edit border-0 shadow-sm" 
-                                    id="edit_client_<?= htmlspecialchars((string)$feature['_id']) ?>"
+                                    id="edit_client_<?= htmlspecialchars($featureId) ?>"
                                     required>
                                 <option value="">Select or type a client...</option>
                                 <?php
-                                $currentClient = $feature['client'] ?? '';
                                 $clientOptions = [];
                                 if ($controllerLoaded && class_exists('FeatureController')) {
                                     try {
@@ -385,7 +413,7 @@ if (isset($_SESSION['flash_message'])) {
                                 }
                                 
                                 foreach ($clientOptions as $option):
-                                    $selected = ($currentClient === $option) ? 'selected' : '';
+                                    $selected = ($client === $option) ? 'selected' : '';
                                 ?>
                                     <option value="<?= htmlspecialchars($option, ENT_QUOTES, 'UTF-8') ?>" <?= $selected ?>>
                                         <?= htmlspecialchars($option, ENT_QUOTES, 'UTF-8') ?>
@@ -393,9 +421,9 @@ if (isset($_SESSION['flash_message'])) {
                                 <?php endforeach; ?>
                                 
                                 <!-- Add current value if it's not in the list -->
-                                <?php if ($currentClient && !in_array($currentClient, $clientOptions)): ?>
-                                    <option value="<?= htmlspecialchars($currentClient, ENT_QUOTES, 'UTF-8') ?>" selected>
-                                        <?= htmlspecialchars($currentClient, ENT_QUOTES, 'UTF-8') ?>
+                                <?php if ($client && !in_array($client, $clientOptions)): ?>
+                                    <option value="<?= htmlspecialchars($client, ENT_QUOTES, 'UTF-8') ?>" selected>
+                                        <?= htmlspecialchars($client, ENT_QUOTES, 'UTF-8') ?>
                                     </option>
                                 <?php endif; ?>
                             </select>
@@ -404,7 +432,7 @@ if (isset($_SESSION['flash_message'])) {
                         <!-- Description -->
                         <div class="col-12">
                             <label class="form-label small text-muted mb-1 fw-medium">Description <span class="text-danger">*</span></label>
-                            <textarea name="edit_description" class="form-control border-0 shadow-sm" rows="3" required><?= htmlspecialchars($feature['description'] ?? '') ?></textarea>
+                            <textarea name="edit_description" class="form-control border-0 shadow-sm" rows="3" required><?= htmlspecialchars($description) ?></textarea>
                         </div>
 
                         <!-- Source - Select2 Dropdown -->
@@ -412,10 +440,9 @@ if (isset($_SESSION['flash_message'])) {
                             <label class="form-label small text-muted mb-1 fw-medium">Source</label>
                             <select name="edit_source" 
                                     class="form-select select2-edit border-0 shadow-sm" 
-                                    id="edit_source_<?= htmlspecialchars((string)$feature['_id']) ?>">
+                                    id="edit_source_<?= htmlspecialchars($featureId) ?>">
                                 <option value="">Select or type a source...</option>
                                 <?php
-                                $currentSource = $feature['source'] ?? '';
                                 $sourceOptions = [];
                                 if ($controllerLoaded && class_exists('FeatureController')) {
                                     try {
@@ -430,7 +457,7 @@ if (isset($_SESSION['flash_message'])) {
                                 }
                                 
                                 foreach ($sourceOptions as $option):
-                                    $selected = ($currentSource === $option) ? 'selected' : '';
+                                    $selected = ($source === $option) ? 'selected' : '';
                                 ?>
                                     <option value="<?= htmlspecialchars($option, ENT_QUOTES, 'UTF-8') ?>" <?= $selected ?>>
                                         <?= htmlspecialchars($option, ENT_QUOTES, 'UTF-8') ?>
@@ -438,9 +465,9 @@ if (isset($_SESSION['flash_message'])) {
                                 <?php endforeach; ?>
                                 
                                 <!-- Add current value if it's not in the list -->
-                                <?php if ($currentSource && !in_array($currentSource, $sourceOptions)): ?>
-                                    <option value="<?= htmlspecialchars($currentSource, ENT_QUOTES, 'UTF-8') ?>" selected>
-                                        <?= htmlspecialchars($currentSource, ENT_QUOTES, 'UTF-8') ?>
+                                <?php if ($source && !in_array($source, $sourceOptions)): ?>
+                                    <option value="<?= htmlspecialchars($source, ENT_QUOTES, 'UTF-8') ?>" selected>
+                                        <?= htmlspecialchars($source, ENT_QUOTES, 'UTF-8') ?>
                                     </option>
                                 <?php endif; ?>
                             </select>
@@ -456,37 +483,34 @@ if (isset($_SESSION['flash_message'])) {
                             <!-- Toggle Button Group - Improved styling -->
                             <div class="btn-group w-100 mb-3 shadow-sm" role="group">
                                 <div class="btn-group" role="group" aria-label="Upload or URL Toggle">
-    <button type="button" 
-        id="uploadToggle_<?= htmlspecialchars((string)$feature['_id']) ?>" 
-        class="btn btn-success text-white active">
-        <i class="fas fa-upload me-1"></i> Upload File
-    </button>
+                                    <button type="button" 
+                                        id="uploadToggle_<?= htmlspecialchars($featureId) ?>" 
+                                        class="btn btn-success text-white active">
+                                        <i class="fas fa-upload me-1"></i> Upload File
+                                    </button>
 
-    <button type="button" 
-        id="urlToggle_<?= htmlspecialchars((string)$feature['_id']) ?>" 
-        class="btn btn-outline-success">
-        <i class="fas fa-link me-1"></i> Add URL
-    </button>
-</div>
-
-
+                                    <button type="button" 
+                                        id="urlToggle_<?= htmlspecialchars($featureId) ?>" 
+                                        class="btn btn-outline-success">
+                                        <i class="fas fa-link me-1"></i> Add URL
+                                    </button>
+                                </div>
                             </div>
 
                             <!-- Current file display -->
-                            <?php $fileUrl = $feature['sample_file'] ?? ''; ?>
-                            <div id="current-file-wrapper-<?= htmlspecialchars((string)$feature['_id']) ?>"
-                                 class="<?= empty($fileUrl) ? 'd-none' : '' ?> mb-2 p-2 bg-white rounded shadow-sm">
-                                <?php if (!empty($fileUrl)): ?>
+                            <div id="current-file-wrapper-<?= htmlspecialchars($featureId) ?>"
+                                 class="<?= empty($sampleFile) ? 'd-none' : '' ?> mb-2 p-2 bg-white rounded shadow-sm">
+                                <?php if (!empty($sampleFile)): ?>
                                     <small class="text-muted d-block mb-1">Current file:</small>
-                                    <?php if (filter_var($fileUrl, FILTER_VALIDATE_URL)): ?>
-                                        <a href="<?= htmlspecialchars($fileUrl) ?>" target="_blank" class="text-decoration-none text-success d-flex align-items-center">
+                                    <?php if (filter_var($sampleFile, FILTER_VALIDATE_URL)): ?>
+                                        <a href="<?= htmlspecialchars($sampleFile) ?>" target="_blank" class="text-decoration-none text-success d-flex align-items-center">
                                             <i class="fas fa-external-link-alt me-1"></i>
-                                            <span class="text-truncate"><?= htmlspecialchars($fileUrl) ?></span>
+                                            <span class="text-truncate"><?= htmlspecialchars($sampleFile) ?></span>
                                         </a>
                                     <?php else: ?>
-                                        <a href="<?= htmlspecialchars($fileUrl) ?>" target="_blank" class="text-decoration-none text-success d-flex align-items-center">
+                                        <a href="<?= htmlspecialchars($sampleFile) ?>" target="_blank" class="text-decoration-none text-success d-flex align-items-center">
                                             <i class="fas fa-file me-1"></i>
-                                            <span class="text-truncate"><?= htmlspecialchars(basename($fileUrl)) ?></span>
+                                            <span class="text-truncate"><?= htmlspecialchars(basename($sampleFile)) ?></span>
                                         </a>
                                     <?php endif; ?>
                                 <?php endif; ?>
@@ -494,26 +518,26 @@ if (isset($_SESSION['flash_message'])) {
 
                             <!-- File Upload Input -->
                             <input type="file"
-                                   id="edit_sample_file_<?= htmlspecialchars((string)$feature['_id']) ?>"
+                                   id="edit_sample_file_<?= htmlspecialchars($featureId) ?>"
                                    name="edit_sample_file"
                                    class="form-control mb-2 border-0 shadow-sm"
                                    accept=".jpg,.jpeg,.png,.gif,.pdf,.doc,.docx,.txt,.xlsx,.xls"
-                                   aria-describedby="sample_file_help_<?= htmlspecialchars((string)$feature['_id']) ?>">
+                                   aria-describedby="sample_file_help_<?= htmlspecialchars($featureId) ?>">
 
                             <!-- URL Input (Hidden by Default) -->
                             <input type="url"
-                                   id="edit_file_url_<?= htmlspecialchars((string)$feature['_id']) ?>"
+                                   id="edit_file_url_<?= htmlspecialchars($featureId) ?>"
                                    name="edit_file_url"
                                    class="form-control d-none border-0 shadow-sm"
                                    placeholder="Paste a file URL here (e.g., https://...)"
-                                   value="<?= filter_var($fileUrl, FILTER_VALIDATE_URL) ? htmlspecialchars($fileUrl) : '' ?>"
-                                   aria-describedby="file_url_help_<?= htmlspecialchars((string)$feature['_id']) ?>">
+                                   value="<?= filter_var($sampleFile, FILTER_VALIDATE_URL) ? htmlspecialchars($sampleFile) : '' ?>"
+                                   aria-describedby="file_url_help_<?= htmlspecialchars($featureId) ?>">
 
                             <!-- Error Feedback -->
-                            <div id="file-error-<?= htmlspecialchars((string)$feature['_id']) ?>" 
+                            <div id="file-error-<?= htmlspecialchars($featureId) ?>" 
                                  class="invalid-feedback d-none"></div>
 
-                            <div id="sample_file_help_<?= htmlspecialchars((string)$feature['_id']) ?>" class="form-text small mt-1">
+                            <div id="sample_file_help_<?= htmlspecialchars($featureId) ?>" class="form-text small mt-1">
                                 <i class="fas fa-info-circle text-success me-1"></i>
                                 Supported: JPG, PNG, GIF, PDF, DOC, DOCX, TXT, XLSX, XLS (Max: 5MB) or paste a valid public file URL.
                             </div>
@@ -527,7 +551,7 @@ if (isset($_SESSION['flash_message'])) {
                         <i class="fas fa-save me-2"></i> Save Changes
                     </button>
                     <button type="button" class="btn btn-outline-secondary px-4 py-2 shadow-sm" data-bs-dismiss="modal"
-                            onclick="handleCancelEdit('<?= htmlspecialchars((string)$feature['_id']) ?>')">
+                            onclick="handleCancelEdit('<?= htmlspecialchars($featureId) ?>')">
                         <i class="fas fa-times me-2"></i> Cancel
                     </button>
                 </div>
@@ -537,7 +561,7 @@ if (isset($_SESSION['flash_message'])) {
 </div>
 
 <style>
-    /* Fix toggle button styling */
+/* Fix toggle button styling */
 .btn-group .btn-success.text-white {
     background-color: #198754 !important;
     border-color: #198754 !important;
@@ -554,7 +578,6 @@ if (isset($_SESSION['flash_message'])) {
     background-color: #198754 !important;
     color: white !important;
 }
-
 
 /* Fix Select2 dropdown hover colors - same as edit modal */
 .select2-container--bootstrap-5 .select2-results__option--selected {
@@ -577,7 +600,8 @@ if (isset($_SESSION['flash_message'])) {
     background-color: #f8f9fa;
     transform: translateX(2px);
 }
-    /* Fix Add URL active state */
+
+/* Fix Add URL active state */
 #urlToggle_[id].active,
 #urlToggle_[id]:active {
     background-color: #198754 !important; /* Bootstrap success green */
@@ -650,14 +674,16 @@ if (isset($_SESSION['flash_message'])) {
 </style>
 
 <script>
-    document.querySelectorAll('[id^="uploadToggle_"]').forEach(btn => {
+document.querySelectorAll('[id^="uploadToggle_"]').forEach(btn => {
     btn.addEventListener('click', function() {
         this.classList.add('btn-success', 'text-white');
         this.classList.remove('btn-outline-success');
 
         let urlBtn = document.getElementById(this.id.replace('uploadToggle_', 'urlToggle_'));
-        urlBtn.classList.add('btn-outline-success');
-        urlBtn.classList.remove('btn-success', 'text-white');
+        if (urlBtn) {
+            urlBtn.classList.add('btn-outline-success');
+            urlBtn.classList.remove('btn-success', 'text-white');
+        }
     });
 });
 
@@ -667,8 +693,10 @@ document.querySelectorAll('[id^="urlToggle_"]').forEach(btn => {
         this.classList.remove('btn-outline-success');
 
         let uploadBtn = document.getElementById(this.id.replace('urlToggle_', 'uploadToggle_'));
-        uploadBtn.classList.add('btn-outline-success');
-        uploadBtn.classList.remove('btn-success', 'text-white');
+        if (uploadBtn) {
+            uploadBtn.classList.add('btn-outline-success');
+            uploadBtn.classList.remove('btn-success', 'text-white');
+        }
     });
 });
 
@@ -723,22 +751,22 @@ $(document).on('shown.bs.modal', '[id^="editModal"]', function () {
     const currentUrl = urlInput.val().trim();
     if (currentUrl) {
         // URL mode - show URL input, hide file input
-        uploadToggle.removeClass('active btn-success').addClass('btn-outline-success');
-        urlToggle.removeClass('btn-outline-success').addClass('active btn-success');
+        uploadToggle.removeClass('active btn-success text-white').addClass('btn-outline-success');
+        urlToggle.removeClass('btn-outline-success').addClass('active btn-success text-white');
         fileInput.addClass('d-none').prop('disabled', true);
         urlInput.removeClass('d-none').prop('disabled', false);
     } else {
         // File mode (default) - show file input, hide URL input
-        uploadToggle.removeClass('btn-outline-success').addClass('active btn-success');
-        urlToggle.removeClass('active btn-success').addClass('btn-outline-success');
+        uploadToggle.removeClass('btn-outline-success').addClass('active btn-success text-white');
+        urlToggle.removeClass('active btn-success text-white').addClass('btn-outline-success');
         fileInput.removeClass('d-none').prop('disabled', false);
         urlInput.addClass('d-none').prop('disabled', true);
     }
 
     // Upload toggle handler
     uploadToggle.off('click').on('click', function() {
-        $(this).removeClass('btn-outline-success').addClass('active btn-success');
-        urlToggle.removeClass('active btn-success').addClass('btn-outline-success');
+        $(this).removeClass('btn-outline-success').addClass('active btn-success text-white');
+        urlToggle.removeClass('active btn-success text-white').addClass('btn-outline-success');
         
         fileInput.removeClass('d-none').prop('disabled', false);
         urlInput.addClass('d-none').prop('disabled', true).val('').removeClass('is-valid is-invalid');
@@ -746,8 +774,8 @@ $(document).on('shown.bs.modal', '[id^="editModal"]', function () {
 
     // URL toggle handler
     urlToggle.off('click').on('click', function() {
-        $(this).removeClass('btn-outline-success').addClass('active btn-success');
-        uploadToggle.removeClass('active btn-success').addClass('btn-outline-success');
+        $(this).removeClass('btn-outline-success').addClass('active btn-success text-white');
+        uploadToggle.removeClass('active btn-success text-white').addClass('btn-outline-success');
         
         urlInput.removeClass('d-none').prop('disabled', false);
         fileInput.addClass('d-none').prop('disabled', true).val('').removeClass('is-valid is-invalid');
@@ -800,7 +828,7 @@ function handleSaveEdit(featureId) {
     }
 
     const systemName = $('#edit_system_name_' + featureId).val();
-    const oldModule = '<?= addslashes($feature["module"] ?? "") ?>';
+    const oldModule = '<?= addslashes($module) ?>';
     const newModule = $('#edit_module_' + featureId).val();
     
     if (systemName && oldModule && newModule && oldModule !== newModule) {
@@ -819,16 +847,13 @@ function handleCancelEdit(featureId) {
     $(`#editModal${featureId} form`)[0].reset();
     $(`#editModal${featureId} .is-valid, #editModal${featureId} .is-invalid`).removeClass('is-valid is-invalid');
 }
-</script>
 
-<script>
 // Set flag when feature is updated successfully
 <?php if ($messageType === 'success'): ?>
 sessionStorage.setItem('dataUpdated', 'true');
 <?php endif; ?>
-</script>
 
-<script>// Add this to your edit modal JavaScript
+// Module validation function
 function validateSystemModulePair(systemName, moduleName, featureId) {
     if (!systemName || !moduleName) return true;
     
@@ -863,4 +888,5 @@ function validateSystemModulePair(systemName, moduleName, featureId) {
     .catch(error => {
         console.error('Validation error:', error);
     });
-}</script>
+}
+</script>
